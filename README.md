@@ -1,46 +1,48 @@
 # WiFi YFP Dashboard
 
-## 專案應用目的
+Chinese version: [README_CHT.md](README_CHT.md)
 
-本專案用於 WiFi 產品生產測試（Factory QA）資料的可視化與追蹤，目標是把分散的測試 log 轉成可即時監控、可回溯分析、可維運管理的儀表板系統，協助產線與工程團隊快速發現良率風險並縮短問題定位時間。
+## Project Purpose
 
-## 主要解決的問題
+This project is designed for WiFi product factory QA data visualization and tracking. It converts scattered test logs into an operational dashboard system for live monitoring, traceable analysis, and maintainable day-to-day operations, helping production and engineering teams detect yield risks earlier and reduce troubleshooting time.
 
-1. 測試資料分散在文字 log，人工查找與彙整耗時。
-2. 難以即時掌握 Work Order 的良率、吞吐量與重測風險。
-3. 重啟或換機後，部署與資料還原流程容易不一致。
-4. 現場值班需要一套可持續運作、可快速復原的監控機制。
+## Problems It Solves
 
-## 核心能力
+1. Test results are scattered across text logs, making manual investigation and summarization slow.
+2. It is difficult to continuously track work-order-level yield, throughput, and retry risk.
+3. Deployment and data recovery can become inconsistent after reboot or machine migration.
+4. On-duty teams need a resilient monitoring setup that can recover quickly.
 
-1. 產線資料整合：解析測試 log 並匯入 PostgreSQL。
-2. 即時 Dashboard：顯示整體良率、失敗清單、吞吐趨勢與 Work Order 指標。
-3. 自動輪播展示：可在展示模式下自動切換 Dashboard / Work orders / Throughput。
-4. 維運工具鏈：提供備份、還原、掛載、權限修復與開機自啟腳本。
-5. 容器化部署：以 Docker Compose 啟動 API、PostgreSQL 與 Grafana。
+## Core Capabilities
 
-## 適用場景
+1. Production data integration: parse test logs and import data into PostgreSQL.
+2. Live dashboard: show overall yield, fail list, throughput trends, and work order metrics.
+3. Auto-rotation display mode: rotate between Dashboard / Work Orders / Throughput pages.
+4. Operations toolkit: backup, restore, mount, permission-fix, and auto-start scripts.
+5. Containerized deployment: run API, PostgreSQL, and Grafana with Docker Compose.
 
-1. 製造端生產測試線的即時監看。
-2. 製程異常時的快速回查（Fail list / Retry 行為）。
-3. 每日/每月品質報告的數據來源。
-4. 新機搬遷與災難復原（Backup/Restore SOP）。
+## Typical Use Cases
 
-## 專案結構
+1. Real-time monitoring on manufacturing test lines.
+2. Fast trace-back during process anomalies (Fail list / Retry behavior).
+3. Data source for daily or monthly quality reports.
+4. New-machine migration and disaster recovery using backup/restore SOPs.
 
-- `dockerup-essential/`: 執行系統核心（API、Dashboard、Compose、Schema、Parser）
-- `dockerup-docs/`: 部署與維運文件、腳本與 SOP
-- `DB_backups/`: 備份檔存放（不建議提交到 Git）
+## Repository Structure
 
-## 非目標與限制
+- `dockerup-essential/`: runtime core (API, dashboard, compose, schema, parser)
+- `dockerup-docs/`: deployment and maintenance docs, scripts, and SOPs
+- `DB_backups/`: backup storage (not recommended to commit to Git)
 
-1. 本專案不取代完整 MES/ERP 流程，只聚焦測試資料觀測與分析。
-2. Dashboard 指標品質依賴測試 log 正確性與資料匯入完整性。
-3. 生產環境請搭配備份策略與權限控管（見 `dockerup-docs/`）。
+## Non-Goals and Constraints
 
-## 成功指標（建議）
+1. This project does not replace full MES/ERP workflows; it focuses on test-data observability and analysis.
+2. Dashboard quality depends on test-log correctness and complete ingestion.
+3. Production environments should enforce backup strategy and permission controls (see `dockerup-docs/`).
 
-1. 問題工單定位時間（MTTD/MTTR）下降。
-2. 產線日常巡檢由人工比對轉為儀表板監看。
-3. 系統重啟後可在預期時間內自動恢復服務。
-4. 換機後可依 SOP 在可控時間內完成還原與上線。
+## Suggested Success Metrics
+
+1. Reduced MTTD/MTTR for problematic work orders.
+2. Daily line inspection shifted from manual log checks to dashboard monitoring.
+3. Services recover automatically within expected time after reboot.
+4. New-machine restore can be completed within a controlled SOP timeframe.
