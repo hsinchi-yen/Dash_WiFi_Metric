@@ -1,0 +1,15 @@
+# PostgreSQL data (exclude database files)
+dockerup-essential/docker-data/pgdata/
+dockerup-essential/docker-data/postgres/
+dockerup-essential/docker-data/postgresql/
+**/pg_wal/
+**/base/
+
+# Backup dumps
+DB_backups/
+**/*.dump
+**/*.sql.gz
+
+# Python cache
+**/__pycache__/
+**/*.pyc

@@ -1,0 +1,96 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Yield %",
+      "datasource": "WiFi PostgreSQL",
+      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 0},
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT ROUND(COUNT(*) FILTER (WHERE result=true) * 100.0 / NULLIF(COUNT(*),0), 2) AS value FROM test_record WHERE $__timeFilter(test_time)",
+          "refId": "A"
+        }
+      ],
+      "options": {"reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}, "orientation": "auto", "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "textMode": "auto"},
+      "fieldConfig": {"defaults": {"unit": "percent", "decimals": 2}, "overrides": []}
+    },
+    {
+      "type": "stat",
+      "title": "Units Tested",
+      "datasource": "WiFi PostgreSQL",
+      "gridPos": {"h": 6, "w": 8, "x": 8, "y": 0},
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS value FROM test_record WHERE $__timeFilter(test_time)",
+          "refId": "A"
+        }
+      ],
+      "options": {"reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}, "orientation": "auto", "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "textMode": "auto"}
+    },
+    {
+      "type": "stat",
+      "title": "Retry Rate %",
+      "datasource": "WiFi PostgreSQL",
+      "gridPos": {"h": 6, "w": 8, "x": 16, "y": 0},
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT ROUND(COUNT(*) FILTER (WHERE attempt_count_24g > 1 OR attempt_count_5g > 1) * 100.0 / NULLIF(COUNT(*),0), 2) AS value FROM test_record WHERE $__timeFilter(test_time)",
+          "refId": "A"
+        }
+      ],
+      "options": {"reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}, "orientation": "auto", "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "textMode": "auto"},
+      "fieldConfig": {"defaults": {"unit": "percent", "decimals": 2}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "Yield Trend by Hour",
+      "datasource": "WiFi PostgreSQL",
+      "gridPos": {"h": 10, "w": 12, "x": 0, "y": 6},
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT date_trunc('hour', test_time) AS time, ROUND(AVG(CASE WHEN result THEN 1 ELSE 0 END) * 100, 2) AS yield_pct FROM test_record WHERE $__timeFilter(test_time) GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percent", "decimals": 2}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "single"}}
+    },
+    {
+      "type": "table",
+      "title": "Latest Fail Details",
+      "datasource": "WiFi PostgreSQL",
+      "gridPos": {"h": 10, "w": 12, "x": 12, "y": 6},
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT test_time, sn, work_order, avg_24g, avg_5g, rssi_delta_5g, bt_result FROM test_record WHERE result = false AND $__timeFilter(test_time) ORDER BY test_time DESC LIMIT 100",
+          "refId": "A"
+        }
+      ],
+      "options": {"showHeader": true}
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["wifi", "qc"],
+  "templating": {"list": []},
+  "time": {"from": "now-24h", "to": "now"},
+  "timepicker": {},
+  "timezone": "",
+  "title": "WiFi QC Overview",
+  "uid": "wifi-qc-overview",
+  "version": 1,
+  "weekStart": ""
+}

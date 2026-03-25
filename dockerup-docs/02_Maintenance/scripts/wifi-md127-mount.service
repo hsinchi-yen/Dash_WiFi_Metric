@@ -1,0 +1,15 @@
+[Unit]
+Description=Mount /mnt/md127 before Docker stack starts
+After=systemd-udev-settle.service
+Wants=systemd-udev-settle.service
+Before=docker.service wifi-dashboard.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/default/wifi-md127-mount
+ExecStart=/usr/local/sbin/wifi-md127-mount.sh
+RemainAfterExit=yes
+TimeoutStartSec=45
+
+[Install]
+WantedBy=multi-user.target

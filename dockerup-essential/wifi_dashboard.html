@@ -1,0 +1,1953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>WiFi Test Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0e1117;
+    --surface: #151a22;
+    --surface2: #1b2230;
+    --border: rgba(255,255,255,0.12);
+    --text: #f3f6fb;
+    --muted: #a9b3c6;
+    --blue: #4ea1ff;
+    --blue-bg: rgba(78,161,255,0.2);
+    --green: #4ed18a;
+    --green-bg: rgba(78,209,138,0.18);
+    --red: #ff7c7c;
+    --red-bg: rgba(255,124,124,0.2);
+    --amber: #ffcc7a;
+    --amber-bg: rgba(255,204,122,0.2);
+    --purple: #a98bff;
+    --purple-bg: rgba(169,139,255,0.2);
+    --chart-grid: rgba(255,255,255,0.08);
+    --chart-text: #b7c1d6;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+  body[data-theme='light'] {
+    --bg: #f7f6f2;
+    --surface: #ffffff;
+    --surface2: #f1f0eb;
+    --border: rgba(0,0,0,0.1);
+    --text: #1a1a18;
+    --muted: #6b6a65;
+    --blue: #185FA5;
+    --blue-bg: #E6F1FB;
+    --green: #3B6D11;
+    --green-bg: #EAF3DE;
+    --red: #A32D2D;
+    --red-bg: #FCEBEB;
+    --amber: #854F0B;
+    --amber-bg: #FAEEDA;
+    --purple: #534AB7;
+    --purple-bg: #EEEDFE;
+    --chart-grid: rgba(0,0,0,0.06);
+    --chart-text: #6b6a65;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; transition: background-color 0.2s ease, color 0.2s ease; }
+  
+  /* Layout */
+  .app { display: flex; min-height: 100vh; }
+  .sidebar { width: 220px; background: var(--surface); border-right: 0.5px solid var(--border); padding: 0; flex-shrink: 0; display: flex; flex-direction: column; min-height: 100vh; }
+  .sidebar nav { flex: 1; }
+  .sidebar-footer { padding: 12px 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .sidebar-footer .badge { width: 100%; justify-content: center; }
+  .theme-toggle {
+    width: 100%;
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 12px;
+    padding: 7px 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .theme-toggle:hover { border-color: var(--blue); color: var(--blue); }
+  .sidebar-logo { padding: 20px 20px 16px; border-bottom: 0.5px solid var(--border); }
+  .sidebar-logo h1 { font-size: 15px; font-weight: 600; color: var(--text); }
+  .sidebar-logo p { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .sidebar-clock { margin-top: 10px; }
+  .sidebar-clock-date { font-size: 11px; color: var(--muted); }
+  .sidebar-clock-time { font-size: 16px; font-weight: 600; color: var(--text); line-height: 1.2; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .nav-section { padding: 12px 0 4px; }
+  .nav-label { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; color: var(--muted); padding: 0 16px 6px; text-transform: uppercase; }
+  .nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer; color: var(--muted); border-left: 2px solid transparent; transition: all 0.15s; }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active { background: var(--blue-bg); color: var(--blue); border-left-color: var(--blue); font-weight: 500; }
+  .nav-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: 0.5; }
+  
+  .main { flex: 1; overflow: hidden; }
+  .topbar { background: var(--surface); border-bottom: 0.5px solid var(--border); padding: 14px 28px; display: flex; align-items: center; justify-content: space-between; }
+  .topbar h2 { font-size: 16px; font-weight: 600; }
+  .topbar-right { display: flex; gap: 8px; align-items: center; }
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 500; }
+  .badge-green { background: var(--green-bg); color: var(--green); }
+  .badge-amber { background: var(--amber-bg); color: var(--amber); }
+  .badge-red { background: var(--red-bg); color: var(--red); }
+  .badge-blue { background: var(--blue-bg); color: var(--blue); }
+  .badge-purple { background: var(--purple-bg); color: var(--purple); }
+  
+  .content { padding: 16px 20px; }
+  
+  /* Metric cards */
+  .metrics { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 12px; margin-bottom: 24px; }
+  .metric-card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .metric-label { font-size: 11px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+  .metric-value { font-size: 26px; font-weight: 600; line-height: 1; }
+  .metric-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .metric-card.highlight { border-left: 3px solid var(--blue); }
+  
+  /* Charts row */
+  .charts { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .card-title { font-size: 13px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
+  .card-title span { color: var(--muted); font-size: 11px; font-weight: 400; }
+  .chart-wrap { position: relative; height: 180px; }
+  .chart-summary { display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .chart-summary .badge { font-size: 10px; }
+  .pf-chart-wrap { padding-left: 108px; }
+  .pf-detail {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .pf-detail-item {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.1;
+  }
+  .pf-detail-label {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .pf-detail-value {
+    font-size: 18px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .pf-detail-value.pass { color: var(--green); }
+  .pf-detail-value.fail { color: var(--red); }
+  
+  /* Work order table */
+  .table-wrap { overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 0.5px solid var(--border); background: var(--surface2); }
+  td { padding: 10px 12px; border-bottom: 0.5px solid var(--border); color: var(--text); }
+  tr:hover td { background: var(--surface2); }
+  tr:last-child td { border-bottom: none; }
+  .yield-bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .yield-bar { height: 6px; border-radius: 3px; background: var(--surface2); flex: 1; overflow: hidden; }
+  .yield-fill { height: 100%; border-radius: 3px; background: var(--green); }
+  .yield-fill.warn { background: var(--amber); }
+  .yield-fill.danger { background: var(--red); }
+  
+  /* Upload page */
+  .upload-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 48px 32px; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--surface); }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--blue); background: var(--blue-bg); }
+  .upload-icon { width: 40px; height: 40px; margin: 0 auto 12px; opacity: 0.4; }
+  .upload-zone h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .upload-zone p { font-size: 12px; color: var(--muted); }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; cursor: pointer; border: 0.5px solid var(--border); background: var(--surface); color: var(--text); transition: all 0.15s; }
+  .btn:hover { background: var(--surface2); }
+  .btn-primary { background: var(--text); color: var(--surface); border-color: var(--text); }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  
+  .file-list { margin-top: 20px; }
+  .file-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 6px; }
+  .file-item-name { flex: 1; font-size: 12px; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-status { font-size: 11px; font-weight: 500; }
+  .progress-bar { height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+  .progress-fill { height: 100%; background: var(--blue); border-radius: 2px; transition: width 0.4s; }
+  
+  /* Preview parse table */
+  .parse-preview { margin-top: 20px; }
+  .parse-preview table { font-size: 11px; }
+  .parse-preview th, .parse-preview td { padding: 6px 10px; }
+  
+  /* Filter bar */
+  .filter-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  select, input[type=text] { padding: 6px 10px; border: 0.5px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; background: var(--surface); color: var(--text); }
+  select:focus, input:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+  
+  /* Fail list */
+  .fail-row td { color: var(--red); }
+  .retry-warn td { color: var(--amber); }
+  
+  /* Tab strip */
+  .tabs { display: flex; gap: 0; border-bottom: 0.5px solid var(--border); margin-bottom: 20px; }
+  .tab { padding: 8px 16px; font-size: 13px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -0.5px; }
+  .tab.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: 500; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  
+  /* Page visibility */
+  .page { display: none; }
+  .page.active { display: flex; flex-direction: column; height: 100dvh; }
+
+  /* 1080p fullscreen compact layout: keep dashboard visible without vertical page scroll */
+  #page-dashboard .content {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px;
+    overflow: hidden;
+  }
+  #page-dashboard .metrics,
+  #page-dashboard .charts {
+    margin-bottom: 0;
+  }
+  #page-dashboard .charts {
+    height: 100%;
+    align-items: stretch;
+  }
+  #page-dashboard .charts-primary {
+    grid-template-columns: minmax(220px, 1fr) minmax(0, 4fr);
+  }
+  #page-dashboard .charts-secondary {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+  #page-dashboard .metric-card {
+    padding: 12px;
+  }
+  #page-dashboard .metric-value {
+    font-size: 22px;
+  }
+  #page-dashboard .card,
+  #page-dashboard .charts .card {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  #page-dashboard .card-title {
+    margin-bottom: 8px;
+  }
+  #page-dashboard .chart-wrap {
+    flex: 1;
+    height: auto;
+    min-height: 160px;
+  }
+  #page-dashboard .chart-wrap[style] {
+    height: auto !important;
+  }
+
+  /* keep table-heavy pages usable via internal scrolling instead of whole-page scrolling */
+  #page-workorders .content,
+  #page-faillist .content,
+  #page-throughput .content,
+  #page-dbtweak .content {
+    overflow: auto;
+  }
+  .wo-pager {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .wo-pager-info {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .wo-pager-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h1>TN-WiFi Metrics Center</h1>
+      <p>Production Test Analytics</p>
+      <div class="sidebar-clock" id="sidebar-clock" aria-live="polite">
+        <div class="sidebar-clock-date" id="sidebar-date">--</div>
+        <div class="sidebar-clock-time" id="sidebar-time">--:--:--</div>
+      </div>
+    </div>
+    <nav>
+      <div class="nav-section">
+        <div class="nav-label">Overview</div>
+        <div class="nav-item active" onclick="showPage('dashboard',this)"><div class="nav-dot"></div> Dashboard</div>
+        <div class="nav-item" onclick="showPage('workorders',this)"><div class="nav-dot"></div> Work orders</div>
+        <div class="nav-item" onclick="showPage('faillist',this)"><div class="nav-dot"></div> Fail list</div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">RF Analysis</div>
+        <div class="nav-item" onclick="showPage('throughput',this)"><div class="nav-dot"></div> Throughput trends</div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Data</div>
+        <div class="nav-item" onclick="showPage('dbtweak',this)"><div class="nav-dot"></div> Database Tweak</div>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()">Theme: Dark</button>
+      <span class="badge badge-amber" id="api-status">API: checking...</span>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- DASHBOARD PAGE -->
+    <div class="page active" id="page-dashboard">
+      <div class="topbar">
+        <h2>Overall dashboard</h2>
+        <div class="topbar-right">
+          <select id="scope-filter" onchange="onScopeChanged(this.value)">
+            <option value="latest_day">Recent day</option>
+            <option value="year" selected>Whole year</option>
+          </select>
+          <select id="year-filter" onchange="onYearChanged(this.value)" style="display:inline-block">
+            <option value="2026">2026</option>
+          </select>
+          <select id="product-filter" onchange="onProductChanged(this.value)">
+            <option value="ALL">All products</option>
+          </select>
+          <span class="badge badge-blue" id="wo-binding-status" style="display:none">Bound by WO</span>
+          <select id="wo-filter" onchange="filterDashboard(this.value)">
+            <option value="N/A">N/A</option>
+          </select>
+        </div>
+      </div>
+      <div class="content">
+        <div class="metrics">
+          <div class="metric-card highlight">
+            <div class="metric-label">Overall yield</div>
+            <div class="metric-value" style="color:var(--green)" id="m-yield">0.0%</div>
+            <div class="metric-sub" id="m-yield-sub">Whole year cumulative</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Units tested</div>
+            <div class="metric-value" id="m-units">0</div>
+            <div class="metric-sub" id="m-units-sub">Whole year cumulative</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Avg 2.4G throughput</div>
+            <div class="metric-value" style="color:var(--blue)" id="m-24g">0.0</div>
+            <div class="metric-sub">Mbits/sec</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Avg 5G throughput</div>
+            <div class="metric-value" style="color:var(--blue)" id="m-5g">0.0</div>
+            <div class="metric-sub">Mbits/sec</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Retry rate</div>
+            <div class="metric-value" style="color:var(--amber)" id="m-retry">0.0%</div>
+            <div class="metric-sub">Attempt 2+ but PASS</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Latest Work Order</div>
+            <div class="metric-value" style="color:var(--purple);font-size:18px" id="m-latest-wo">N/A</div>
+            <div class="metric-sub" id="m-latest-product">Product: N/A</div>
+          </div>
+        </div>
+
+        <div class="charts charts-primary">
+          <div class="card">
+            <div class="card-title">Pass/Fail split <span id="pf-subtitle">Whole year cumulative</span></div>
+            <div class="chart-wrap pf-chart-wrap">
+              <div class="pf-detail" id="pf-detail">
+                <div class="pf-detail-item">
+                  <span class="pf-detail-label">Pass</span>
+                  <span class="pf-detail-value pass">0</span>
+                </div>
+                <div class="pf-detail-item">
+                  <span class="pf-detail-label">Fail</span>
+                  <span class="pf-detail-value fail">0</span>
+                </div>
+              </div>
+              <canvas id="pfChart"></canvas>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Latest daily yield trend <span id="yield-trend-subtitle">Recent day 07:00-19:00</span></div>
+            <div class="chart-wrap"><canvas id="yieldChart"></canvas></div>
+          </div>
+        </div>
+
+        <div class="charts charts-secondary">
+          <div class="card">
+            <div class="card-title">Monthly yield trend <span id="monthly-yield-subtitle">Yearly monthly trend</span></div>
+            <div class="chart-wrap"><canvas id="monthlyYieldChart"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Throughput distribution — 2.4G vs 5G <span id="tpdist-subtitle">Whole year cumulative</span></div>
+            <div class="chart-wrap" style="height:160px"><canvas id="histChart"></canvas></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <div class="card-title">Work Order — Hourly Output (Recent 48 hours) <span id="wo-hourly-title">N/A</span></div>
+          <div class="chart-wrap" style="height:200px"><canvas id="woHourlyChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- WORK ORDERS PAGE -->
+    <div class="page" id="page-workorders">
+      <div class="topbar">
+        <h2>Work orders</h2>
+        <div class="topbar-right">
+          <input type="text" placeholder="Search work order..." oninput="filterTable(this.value)"/>
+          <input type="text" placeholder="Search product model..." oninput="filterProductModel(this.value)"/>
+        </div>
+      </div>
+      <div class="content">
+        <div class="card">
+          <div class="table-wrap">
+            <table id="wo-table">
+              <thead>
+                <tr>
+                  <th>Work order</th>
+                  <th>Product model</th>
+                  <th>Start time</th>
+                  <th>End time</th>
+                  <th>Duration</th>
+                  <th>Units tested</th>
+                  <th>Yield</th>
+                  <th>Avg 2.4G (Mbps)</th>
+                  <th>Avg 5G (Mbps)</th>
+                  <th>Retry rate</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="wo-tbody"></tbody>
+            </table>
+          </div>
+          <div class="wo-pager" id="wo-pager" style="display:none;">
+            <div class="wo-pager-info" id="wo-page-info">Page 1 / 1</div>
+            <div class="wo-pager-actions">
+              <button class="btn btn-sm" id="wo-page-first" onclick="goWorkOrdersPage('first')">First</button>
+              <button class="btn btn-sm" id="wo-page-prev" onclick="goWorkOrdersPage('prev')">Prev</button>
+              <button class="btn btn-sm" id="wo-page-next" onclick="goWorkOrdersPage('next')">Next</button>
+              <button class="btn btn-sm" id="wo-page-last" onclick="goWorkOrdersPage('last')">Last</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FAIL LIST PAGE -->
+    <div class="page" id="page-faillist">
+      <div class="topbar">
+        <h2>Fail list</h2>
+        <div class="topbar-right">
+          <span class="badge badge-red" id="fail-count">41 failures</span>
+        </div>
+      </div>
+      <div class="content">
+        <div class="tabs">
+          <div class="tab active" onclick="showTab('all-fails',this)">All failures</div>
+          <div class="tab" onclick="showTab('retry-warn',this)">Retry warnings</div>
+        </div>
+        <div class="tab-content active" id="tab-all-fails">
+          <div class="card">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Time</th><th>SN</th><th>Work order</th><th>Fail reason</th><th>2.4G (Mbps)</th><th>5G (Mbps)</th><th>RSSI before</th><th>RSSI after</th></tr></thead>
+                <tbody id="fail-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="tab-content" id="tab-retry-warn">
+          <div class="card">
+            <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">Units that PASSED but required 2+ attempts — early RF warning indicators.</p>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Time</th><th>SN</th><th>Work order</th><th>Attempts</th><th>Avg 5G (Mbps)</th><th>RSSI delta</th></tr></thead>
+                <tbody id="retry-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- THROUGHPUT PAGE -->
+    <div class="page" id="page-throughput">
+      <div class="topbar"><h2>RF analysis</h2></div>
+      <div class="content">
+        <div class="charts" style="grid-template-columns:1fr 1fr;margin-bottom:16px;">
+          <div class="card">
+            <div class="card-title">2.4G throughput over time <span id="rf-window-title-24g">RF day: N/A</span></div>
+            <div class="chart-wrap"><canvas id="trend24g"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-title">5G throughput over time <span id="rf-window-title-5g">RF day: N/A</span></div>
+            <div class="chart-wrap"><canvas id="trend5g"></canvas></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">P50 / P90 / P95 throughput percentiles <span id="rf-window-title-pct">RF day: N/A</span></div>
+          <div class="chart-wrap" style="height:200px"><canvas id="percChart"></canvas></div>
+        </div>
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-title">High std deviation units — potential RF/antenna issues <span id="rf-window-title-std">RF day: N/A</span></div>
+          <div class="chart-wrap" style="height:200px"><canvas id="stdChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DATABASE TWEAK PAGE -->
+    <div class="page" id="page-dbtweak">
+      <div class="topbar">
+        <h2>Database Tweak</h2>
+        <div class="topbar-right">
+          <span class="badge badge-amber" id="dbtweak-status">DB: login required</span>
+        </div>
+      </div>
+      <div class="content">
+        <div class="card" id="dbtweak-login-panel" style="margin-bottom:16px;">
+          <div class="card-title">PostgreSQL login</div>
+          <div class="filter-bar">
+            <input type="text" id="db-user" placeholder="DB username" style="min-width:220px" />
+            <input type="password" id="db-pass" placeholder="DB password" style="min-width:220px" />
+            <button class="btn btn-primary" onclick="dbTweakLogin()">Login and sync</button>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:6px;">Credentials are verified with PostgreSQL before any delete action.</div>
+        </div>
+
+        <div id="dbtweak-data-panel" style="display:none;">
+          <div class="card" style="margin-bottom:16px;">
+            <div class="card-title">Query and delete</div>
+            <div class="filter-bar">
+              <select id="dbtweak-product-filter" onchange="dbTweakRefresh('ALL')" style="min-width:220px">
+                <option value="ALL">All products</option>
+              </select>
+              <select id="dbtweak-wo-filter" onchange="dbTweakRefresh()" style="min-width:260px">
+                <option value="ALL">All work orders</option>
+              </select>
+              <select id="dbtweak-limit" onchange="dbTweakRefresh()">
+                <option value="100">Latest 100 rows</option>
+                <option value="300" selected>Latest 300 rows</option>
+                <option value="500">Latest 500 rows</option>
+                <option value="1000">Latest 1000 rows</option>
+              </select>
+              <button class="btn" onclick="dbTweakRefresh()">Refresh</button>
+              <button class="btn" style="background:var(--red-bg);color:var(--red);border-color:rgba(163,45,45,0.35)" onclick="dbTweakDeleteWorkOrder()">Delete selected work order</button>
+            </div>
+            <div style="font-size:12px;color:var(--muted);margin-top:6px;">Work orders: <span id="dbwo-count">0</span> | Current query rows: <span id="dbrec-count">0</span></div>
+          </div>
+
+          <div class="card" style="margin-bottom:16px;">
+            <div class="card-title">Work order summary (latest first)</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Work order</th><th>Product model</th><th>Total</th><th>Pass</th><th>Fail</th><th>First test</th><th>Last test</th></tr></thead>
+                <tbody id="dbwo-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Record details (latest first, single delete enabled)</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>ID</th><th>Time</th><th>Work order</th><th>SN</th><th>Model</th><th>WiFi</th><th>BT</th><th>Avg 2.4G</th><th>Avg 5G</th><th>Source</th><th>Action</th></tr></thead>
+                <tbody id="dbrec-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// --- Navigation ---
+function showPage(id, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  const targetNav = el || findNavItemByPageId(id);
+  if (targetNav) targetNav.classList.add('active');
+  if (id === 'dbtweak') {
+    onEnterDbTweakPage();
+  }
+  // On switch to data pages, trigger a refresh so the table is always up-to-date
+  // (especially on first boot when the initial fetch may have been blocked or slow).
+  if (id === 'workorders' || id === 'faillist') {
+    if (!refreshInFlight) {
+      refreshDataFromApi().then(() => {
+        renderWorkOrders(workOrders);
+        renderFails();
+      });
+    }
+  }
+}
+
+function findNavItemByPageId(id) {
+  return Array.from(document.querySelectorAll('.nav-item')).find((node) => {
+    const v = node.getAttribute('onclick') || '';
+    return v.includes(`showPage('${id}'`);
+  }) || null;
+}
+
+function showTab(id, el) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  el.classList.add('active');
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitUntilRefreshIdle() {
+  while (refreshInFlight) {
+    await sleep(80);
+  }
+}
+
+// --- API Data ---
+// 智能 API 端點檢測 - 支持本地、遠端、URL 參數等多種訪問方式
+function detectApiBase() {
+  // 1. 優先級最高：URL 查詢參數（?api=http://...）
+  const urlParams = new URLSearchParams(window.location.search);
+  const apiParam = urlParams.get('api');
+  if (apiParam) {
+    console.log(`[API Config] 使用 URL 參數: ${apiParam}`);
+    return apiParam;
+  }
+
+  // 2. 根據頁面訪問 hostname 自動檢測
+  const hostname = window.location.hostname;
+
+  // file:// 直接開啟 或 localhost
+  if (!hostname || hostname === 'localhost' || hostname === '127.0.0.1') {
+    console.log('[API Config] 本地環境，API 端點: http://localhost:8000');
+    return 'http://localhost:8000';
+  }
+
+  // 內部網路訪問 (10.x 開頭)
+  if (hostname.startsWith('10.')) {
+    const apiBase = `http://${hostname}:8000`;
+    console.log(`[API Config] 內部網路訪問，API 端點: ${apiBase}`);
+    return apiBase;
+  }
+
+  // 域名或其他 IP 訪問
+  const apiBase = `http://${hostname}:8000`;
+  console.log(`[API Config] 遠端訪問，API 端點: ${apiBase}`);
+  return apiBase;
+}
+
+const API_BASE = detectApiBase();
+const LIVE_DATA_ENABLED = true;
+
+const HOURS = [];
+const yieldData = [];
+
+let yieldChartRef = null;
+let pfChartRef = null;
+let histChartRef = null;
+let woHourlyChartRef = null;
+let trend24gChartRef = null;
+let trend5gChartRef = null;
+let percChartRef = null;
+let stdChartRef = null;
+let monthlyYieldChartRef = null;
+let latestWoHourly = [];
+let woDailySeries = [];
+let woDailySeriesKey = '';
+let latestWoProductModel = 'N/A';
+
+let workOrders = [];
+let fails = [];
+let retries = [];
+let products = [];
+let woSearchKeyword = '';
+let woProductSearchKeyword = '';
+let woCurrentPage = 1;
+const WO_PAGE_SIZE = 10;
+let currentProductModel = 'ALL';
+let currentWorkOrder = 'ALL';
+let currentScope = 'year';
+let currentYear = new Date().getFullYear();
+let availableYears = [currentYear];
+let refreshInFlight = false;
+let dbTweakCreds = null;
+let dbTweakWorkorders = [];
+let dbTweakRecords = [];
+let dbTweakProducts = [];
+const AUTO_REFRESH_MS = 10000;
+const THEME_STORAGE_KEY = 'wifi-dashboard-theme';
+const AUTO_CAROUSEL_IDLE_MS = 60000;
+const AUTO_CAROUSEL_INTERVAL_MS = 20000;
+const AUTO_CAROUSEL_PAGES = ['dashboard', 'workorders', 'throughput'];
+let autoCarouselIdleTimer = null;
+let autoCarouselInterval = null;
+let autoCarouselIndex = 0;
+let sidebarClockTimer = null;
+
+function getCssVar(name) {
+  return getComputedStyle(document.body).getPropertyValue(name).trim();
+}
+
+function applyTheme(theme) {
+  const normalized = theme === 'light' ? 'light' : 'dark';
+  document.body.setAttribute('data-theme', normalized);
+  const btn = document.getElementById('theme-toggle');
+  if (btn) {
+    btn.textContent = normalized === 'dark' ? 'Theme: Dark' : 'Theme: Daylight';
+  }
+  localStorage.setItem(THEME_STORAGE_KEY, normalized);
+  refreshChartTheme();
+}
+
+function initTheme() {
+  const saved = localStorage.getItem(THEME_STORAGE_KEY);
+  applyTheme(saved || 'dark');
+}
+
+function refreshChartTheme() {
+  const chartText = getCssVar('--chart-text') || '#a9b3c6';
+  const chartGrid = getCssVar('--chart-grid') || 'rgba(255,255,255,0.08)';
+  const charts = [yieldChartRef, monthlyYieldChartRef, pfChartRef, histChartRef, woHourlyChartRef, trend24gChartRef, trend5gChartRef, percChartRef, stdChartRef].filter(Boolean);
+  charts.forEach((chart) => {
+    if (chart.options?.plugins?.legend?.labels) {
+      chart.options.plugins.legend.labels.color = chartText;
+    }
+    if (chart.options?.scales?.x?.ticks) chart.options.scales.x.ticks.color = chartText;
+    if (chart.options?.scales?.y?.ticks) chart.options.scales.y.ticks.color = chartText;
+    if (chart.options?.scales?.y?.grid) chart.options.scales.y.grid.color = chartGrid;
+    chart.update();
+  });
+}
+
+function toggleTheme() {
+  const current = document.body.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+
+function getCurrentActivePageId() {
+  const active = document.querySelector('.page.active');
+  if (!active || !active.id) return 'dashboard';
+  return active.id.replace('page-', '');
+}
+
+function stopAutoCarousel() {
+  if (autoCarouselInterval) {
+    clearInterval(autoCarouselInterval);
+    autoCarouselInterval = null;
+  }
+}
+
+function startAutoCarousel() {
+  stopAutoCarousel();
+  const current = getCurrentActivePageId();
+  const idx = AUTO_CAROUSEL_PAGES.indexOf(current);
+  autoCarouselIndex = idx >= 0 ? idx : 0;
+  autoCarouselInterval = setInterval(() => {
+    autoCarouselIndex = (autoCarouselIndex + 1) % AUTO_CAROUSEL_PAGES.length;
+    const pageId = AUTO_CAROUSEL_PAGES[autoCarouselIndex];
+    showPage(pageId);
+  }, AUTO_CAROUSEL_INTERVAL_MS);
+}
+
+function resetAutoCarouselIdleTimer() {
+  stopAutoCarousel();
+  if (autoCarouselIdleTimer) clearTimeout(autoCarouselIdleTimer);
+  autoCarouselIdleTimer = setTimeout(() => {
+    startAutoCarousel();
+  }, AUTO_CAROUSEL_IDLE_MS);
+}
+
+function bindAutoCarouselActivityWatchers() {
+  const events = ['click', 'mousemove', 'mousedown', 'keydown', 'touchstart', 'wheel', 'scroll'];
+  events.forEach((evt) => {
+    window.addEventListener(evt, resetAutoCarouselIdleTimer, { passive: true });
+  });
+  resetAutoCarouselIdleTimer();
+}
+
+function updateSidebarClock() {
+  const dateEl = document.getElementById('sidebar-date');
+  const timeEl = document.getElementById('sidebar-time');
+  if (!dateEl || !timeEl) return;
+
+  const now = new Date();
+  dateEl.textContent = now.toLocaleDateString('zh-TW', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short'
+  });
+  timeEl.textContent = now.toLocaleTimeString('zh-TW', { hour12: false });
+}
+
+function startSidebarClock() {
+  updateSidebarClock();
+  if (sidebarClockTimer) clearInterval(sidebarClockTimer);
+  // Local browser timer only; no API/database calls.
+  sidebarClockTimer = setInterval(updateSidebarClock, 1000);
+}
+
+// --- Charts ---
+function mkChart(id, type, labels, datasets, opts={}) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  const chartText = getCssVar('--chart-text') || '#a9b3c6';
+  const chartGrid = getCssVar('--chart-grid') || 'rgba(255,255,255,0.08)';
+  return new Chart(ctx, {
+    type, data: {labels, datasets},
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: datasets.length > 1, labels: { color: chartText, font:{size:11}, boxWidth:10, padding:12 } }, tooltip: { titleFont:{size:11}, bodyFont:{size:11} } },
+      scales: type !== 'pie' && type !== 'doughnut' ? {
+        x: { grid:{display:false}, ticks:{color: chartText, font:{size:10}} },
+        y: { grid:{color: chartGrid}, ticks:{color: chartText, font:{size:10}}, ...opts.y }
+      } : {},
+      ...opts.extra
+    }
+  });
+}
+
+window.addEventListener('load', async () => {
+  initTheme();
+  startSidebarClock();
+  bindAutoCarouselActivityWatchers();
+
+  // Yield trend
+  yieldChartRef = mkChart('yieldChart','line', HOURS, [{
+    label:'Yield %', data:yieldData,
+    borderColor:'#3B6D11', backgroundColor:'rgba(59,109,17,0.08)',
+    fill:true, tension:0.4, pointRadius:3, pointBackgroundColor:'#3B6D11', borderWidth:2
+  }], {y:{min:88,max:100}});
+
+  // Monthly yield trend
+  monthlyYieldChartRef = mkChart('monthlyYieldChart','line', [], [{
+    label:'Monthly Yield %', data:[],
+    borderColor:'#4ea1ff', backgroundColor:'rgba(78,161,255,0.10)',
+    fill:true, tension:0.35, pointRadius:3, pointBackgroundColor:'#4ea1ff', borderWidth:2,
+    spanGaps:false
+  }], {y:{min:88,max:100}});
+
+  // Pass/Fail donut
+  pfChartRef = mkChart('pfChart','doughnut', ['Pass','Fail'], [{
+    data:[100,0],
+    backgroundColor:['#3B6D11','#A32D2D'],
+    borderWidth:0
+  }], {extra:{cutout:'68%'}});
+
+  // Throughput distribution
+  histChartRef = mkChart('histChart','bar', [], [
+    {label:'2.4G',data:[],backgroundColor:'rgba(24,95,165,0.6)',borderRadius:3},
+    {label:'5G',data:[],backgroundColor:'rgba(83,74,183,0.6)',borderRadius:3}
+  ]);
+
+  // Throughput trends
+  trend24gChartRef = mkChart('trend24g','line', [], [{label:'Avg 2.4G Mbps',data:[],borderColor:'#185FA5',backgroundColor:'rgba(24,95,165,0.06)',fill:true,tension:0.4,pointRadius:3,borderWidth:2}],{y:{min:0,max:110}});
+  trend5gChartRef = mkChart('trend5g','line', [], [{label:'Avg 5G Mbps',data:[],borderColor:'#534AB7',backgroundColor:'rgba(83,74,183,0.06)',fill:true,tension:0.4,pointRadius:3,borderWidth:2}],{y:{min:0,max:500}});
+
+  // Percentile chart
+  percChartRef = mkChart('percChart','line', [], [
+    {label:'P95',data:[],borderColor:'#A32D2D',borderDash:[4,3],tension:0.4,pointRadius:2,borderWidth:1.5,fill:false},
+    {label:'P90',data:[],borderColor:'#BA7517',tension:0.4,pointRadius:2,borderWidth:1.5,fill:false},
+    {label:'P50',data:[],borderColor:'#3B6D11',tension:0.4,pointRadius:2,borderWidth:2,fill:false}
+  ]);
+
+  // Std dev
+  stdChartRef = mkChart('stdChart','bar', [], [{label:'Std dev 5G Mbps',data:[],backgroundColor:'rgba(59,109,17,0.7)',borderRadius:4}]);
+
+  // Latest work order hourly bar chart
+  woHourlyChartRef = mkChart('woHourlyChart','bar', [], [{
+    label:'Units', data:[], backgroundColor:'rgba(83,74,183,0.7)', borderRadius:4
+  }]);
+
+  await refreshDataFromApi();
+  renderWorkOrderFilterOptions();
+  renderWorkOrders(workOrders);
+  renderFails();
+
+  setInterval(() => {
+    refreshDataFromApi();
+  }, AUTO_REFRESH_MS);
+});
+
+async function apiGet(path, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${API_BASE}${path}`, { signal: controller.signal });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    return await res.json();
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
+async function apiPost(path, body) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {})
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data?.detail ? String(data.detail) : `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
+async function apiPostBlob(path, body) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {})
+  });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data?.detail) msg = String(data.detail);
+    } catch {
+      // Keep HTTP status fallback.
+    }
+    throw new Error(msg);
+  }
+  return await res.blob();
+}
+
+async function apiGetOr(path, fallbackValue) {
+  try {
+    return await apiGet(path);
+  } catch (err) {
+    console.warn(`API call failed for ${path}, using fallback.`, err);
+    return fallbackValue;
+  }
+}
+
+function inferStatus(yieldPct) {
+  if (yieldPct >= 99.9) return 'active';
+  if (yieldPct >= 97) return 'warning';
+  return 'alarm';
+}
+
+function inferFailReason(item) {
+  if (item.fail_reason) return item.fail_reason;
+  if (item.band_result_5g === false) return '5G check failed';
+  if (item.band_result_24g === false) return '2.4G check failed';
+  if (item.bt_result === false) return 'BT ping failed';
+  return 'Final test failed';
+}
+
+function buildQuery(params) {
+  const sp = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v === undefined || v === null || v === '') return;
+    sp.set(k, String(v));
+  });
+  return sp.toString();
+}
+
+function getScopeYearParams() {
+  const params = { scope: currentScope };
+  if (currentScope === 'year') {
+    params.year = currentYear;
+  }
+  return params;
+}
+
+function getDashboardRangeParams() {
+  const params = { ...getScopeYearParams() };
+  if (currentProductModel && currentProductModel !== 'ALL') {
+    params.product_model = currentProductModel;
+  }
+  if (currentWorkOrder && currentWorkOrder !== 'ALL') {
+    params.work_order = currentWorkOrder;
+  }
+  return params;
+}
+
+function renderProductFilterOptions() {
+  const sel = document.getElementById('product-filter');
+  if (!sel) return;
+  const prev = currentProductModel || sel.value || 'ALL';
+  const values = Array.from(new Set((products || []).map((p) => p.product_model || 'N/A').filter((x) => x && x !== 'N/A')));
+  const options = ['<option value="ALL">All products</option>']
+    .concat(values.map((name) => `<option value="${name}">${name}</option>`));
+  sel.innerHTML = options.join('');
+  currentProductModel = values.includes(prev) || prev === 'ALL' ? prev : 'ALL';
+  // Auto-select when Recent day exposes exactly one product
+  if (currentScope === 'latest_day' && values.length === 1) {
+    currentProductModel = values[0];
+  }
+  sel.value = currentProductModel;
+}
+
+function renderWoBindingStatus() {
+  const el = document.getElementById('wo-binding-status');
+  if (!el) return;
+  const bound = currentWorkOrder && currentWorkOrder !== 'ALL';
+  el.style.display = bound ? 'inline-flex' : 'none';
+}
+
+function renderScopeYearControls(meta) {
+  const scopeSel = document.getElementById('scope-filter');
+  const yearSel = document.getElementById('year-filter');
+  if (!scopeSel || !yearSel) return;
+
+  scopeSel.value = currentScope;
+
+  const years = Array.isArray(meta?.years) && meta.years.length
+    ? meta.years.map((y) => Number(y)).filter((y) => Number.isFinite(y))
+    : [new Date().getFullYear()];
+  availableYears = Array.from(new Set(years)).sort((a, b) => b - a);
+
+  if (!availableYears.includes(Number(currentYear))) {
+    currentYear = availableYears[0];
+  }
+
+  yearSel.innerHTML = availableYears
+    .map((y) => `<option value="${y}">${y}</option>`)
+    .join('');
+  yearSel.value = String(currentYear);
+  yearSel.style.display = currentScope === 'year' ? 'inline-block' : 'none';
+}
+
+function renderOverallScopeTexts(summary) {
+  const yieldSub = document.getElementById('m-yield-sub');
+  const unitsSub = document.getElementById('m-units-sub');
+  const yieldTrendSub = document.getElementById('yield-trend-subtitle');
+  const monthlyYieldSub = document.getElementById('monthly-yield-subtitle');
+  const pfSub = document.getElementById('pf-subtitle');
+  const tpSub = document.getElementById('tpdist-subtitle');
+
+  let label = 'Recent day 07:00-19:00';
+  if (summary && summary.scope === 'year') {
+    label = `${summary.year || currentYear} cumulative`;
+  } else if (summary && summary.day) {
+    label = `${summary.day} 07:00-19:00`;
+  }
+
+  if (yieldSub) yieldSub.textContent = label;
+  if (unitsSub) unitsSub.textContent = label;
+  if (yieldTrendSub) yieldTrendSub.textContent = 'Recent day 07:00-19:00';
+  if (monthlyYieldSub) monthlyYieldSub.textContent = `${currentYear} monthly`;
+  if (pfSub) pfSub.textContent = label;
+  if (tpSub) tpSub.textContent = label;
+}
+
+function onScopeChanged(v) {
+  currentScope = v === 'year' ? 'year' : 'latest_day';
+  const yearSel = document.getElementById('year-filter');
+  if (yearSel) {
+    yearSel.style.display = currentScope === 'year' ? 'inline-block' : 'none';
+  }
+  // Reset to ALL when switching to Whole year — don't carry over auto-selected Recent day filters
+  if (currentScope === 'year') {
+    forceWholeYearAllSelection();
+  }
+  refreshDataFromApi().then(() => {
+    renderWorkOrders(workOrders);
+    renderFails();
+  });
+  renderWoBindingStatus();
+}
+
+function onYearChanged(v) {
+  const y = Number(v);
+  if (Number.isFinite(y)) currentYear = y;
+  refreshDataFromApi().then(() => {
+    renderWorkOrders(workOrders);
+    renderFails();
+  });
+}
+
+function forceWholeYearAllSelection() {
+  currentScope = 'year';
+  currentProductModel = 'ALL';
+  currentWorkOrder = 'ALL';
+
+  const scopeSel = document.getElementById('scope-filter');
+  const yearSel = document.getElementById('year-filter');
+  const productSel = document.getElementById('product-filter');
+  const woSel = document.getElementById('wo-filter');
+
+  if (scopeSel) scopeSel.value = 'year';
+  if (yearSel) yearSel.style.display = 'inline-block';
+  if (productSel) productSel.value = 'ALL';
+  if (woSel) woSel.value = 'ALL';
+}
+
+function onProductChanged(v) {
+  currentProductModel = v || 'ALL';
+  if (currentProductModel === 'ALL') {
+    forceWholeYearAllSelection();
+  }
+  if (currentWorkOrder && currentWorkOrder !== 'ALL') {
+    const matched = (workOrders || []).find((item) => item.wo === currentWorkOrder);
+    if (!matched || matched.model !== currentProductModel) {
+      currentWorkOrder = 'ALL';
+    }
+  }
+  refreshDataFromApi().then(() => {
+    renderWorkOrders(workOrders);
+    renderFails();
+  });
+}
+
+function renderRfWindowTitles(meta) {
+  const defaultText = 'RF day: N/A';
+  const label = meta && meta.window_label ? meta.window_label : defaultText;
+  const el24 = document.getElementById('rf-window-title-24g');
+  const el5 = document.getElementById('rf-window-title-5g');
+  const elPct = document.getElementById('rf-window-title-pct');
+  const elStd = document.getElementById('rf-window-title-std');
+  if (el24) el24.textContent = label;
+  if (el5) el5.textContent = label;
+  if (elPct) elPct.textContent = label;
+  if (elStd) elStd.textContent = label;
+}
+
+async function refreshDataFromApi() {
+  if (refreshInFlight) {
+    return;
+  }
+  refreshInFlight = true;
+
+  if (!LIVE_DATA_ENABLED) {
+    setApiStatus(false, 'disabled');
+    applyNoDataState('LIVE_DATA_DISABLED');
+    refreshInFlight = false;
+    return;
+  }
+
+  try {
+    const scopeYearParams = getScopeYearParams();
+    const productFilterParams = {
+      ...scopeYearParams,
+      limit: 200,
+    };
+    const workOrderFilterParams = {
+      ...scopeYearParams,
+      limit: 200,
+      product_model: currentProductModel !== 'ALL' ? currentProductModel : null,
+    };
+    const dashboardRangeParams = getDashboardRangeParams();
+    const dashboardRangeQs = buildQuery(dashboardRangeParams);
+    const scopedQs = dashboardRangeQs ? `?${dashboardRangeQs}` : '';
+    const yieldTrendParams = {
+      scope: 'latest_day',
+      bucket: 'hour',
+      product_model: currentProductModel !== 'ALL' ? currentProductModel : null,
+      work_order: currentWorkOrder !== 'ALL' ? currentWorkOrder : null,
+    };
+    const monthlyTrendParams = {
+      scope: 'year',
+      year: Number(currentYear),
+      bucket: 'month',
+      product_model: currentProductModel !== 'ALL' ? currentProductModel : null,
+      work_order: currentWorkOrder !== 'ALL' ? currentWorkOrder : null,
+    };
+    const [summary, yearsMeta, productRows, woRows, failRows, retryRows, trendRows, monthlyTrendRows, splitRows, latestWo, tpDist, rfMeta, rfTrendRows, rfPctRows, rfStdRows] = await Promise.all([
+      apiGet(`/api/dashboard/summary?${dashboardRangeQs}`),
+      apiGetOr(`/api/dashboard/available-years${scopedQs}`, { years: [new Date().getFullYear()] }),
+      apiGetOr(`/api/products?${buildQuery(productFilterParams)}`, []),
+      apiGetOr(`/api/workorders?${buildQuery(workOrderFilterParams)}`, []),
+      apiGetOr(`/api/fails?limit=300${currentProductModel !== 'ALL' ? `&product_model=${encodeURIComponent(currentProductModel)}` : ''}`, []),
+      apiGetOr(`/api/retries?limit=300${currentProductModel !== 'ALL' ? `&product_model=${encodeURIComponent(currentProductModel)}` : ''}`, []),
+      apiGetOr(`/api/dashboard/yield-trend?${buildQuery(yieldTrendParams)}`, []),
+      apiGetOr(`/api/dashboard/yield-trend?${buildQuery(monthlyTrendParams)}`, []),
+      apiGetOr(`/api/dashboard/pass-fail-split?${dashboardRangeQs}`, { pass_units: 0, fail_units: 0 }),
+      apiGetOr(`/api/dashboard/latest-workorder-hourly?${buildQuery({ ...dashboardRangeParams, lookback_days: 2 })}`, { work_order: null, product_model: null, hourly: [], days: [] }),
+      apiGetOr(`/api/dashboard/throughput-distribution?${dashboardRangeQs}`, []),
+      apiGetOr(`/api/dashboard/rf-window${scopedQs}`, { window_label: 'RF day: N/A' }),
+      apiGetOr(`/api/dashboard/rf-throughput-trend?${buildQuery({ product_model: currentProductModel !== 'ALL' ? currentProductModel : null, work_order: currentWorkOrder !== 'ALL' ? currentWorkOrder : null, bucket: 'hour' })}`, []),
+      apiGetOr(`/api/dashboard/rf-percentiles?${buildQuery({ product_model: currentProductModel !== 'ALL' ? currentProductModel : null, work_order: currentWorkOrder !== 'ALL' ? currentWorkOrder : null, bucket: 'hour' })}`, []),
+      apiGetOr(`/api/dashboard/rf-stddev?${buildQuery({ product_model: currentProductModel !== 'ALL' ? currentProductModel : null, work_order: currentWorkOrder !== 'ALL' ? currentWorkOrder : null, limit: 20 })}`, [])
+    ]);
+
+    products = Array.isArray(productRows) ? productRows : [];
+    renderProductFilterOptions();
+
+    workOrders = woRows.map(r => ({
+      wo: r.work_order || 'N/A',
+      model: r.product_model || 'N/A',
+      startTime: r.start_time || null,
+      endTime: r.end_time || null,
+      units: Number(r.total || 0),
+      yield: Number(r.yield_pct || 0),
+      avg24: Number(r.avg_24g || 0),
+      avg5g: Number(r.avg_5g || 0),
+      retry: Number(r.retry_rate_pct || 0),
+      status: inferStatus(Number(r.yield_pct || 0))
+    }));
+    woCurrentPage = 1;
+
+    fails = failRows.map(r => ({
+      time: (r.test_time || '').replace('T', ' ').slice(0, 19),
+      sn: r.sn || 'N/A',
+      wo: r.work_order || 'N/A',
+      reason: inferFailReason(r),
+      g24: r.avg_24g,
+      g5: r.avg_5g,
+      rssi_b: r.rssi_before_5g,
+      rssi_a: r.rssi_after_5g
+    }));
+
+    retries = retryRows.map(r => ({
+      time: (r.test_time || '').replace('T', ' ').slice(0, 19),
+      sn: r.sn || 'N/A',
+      wo: r.work_order || 'N/A',
+      attempts: Number(r.attempts || 0),
+      g5: r.avg_5g,
+      rssi_delta: r.rssi_delta_5g,
+      risk: r.retry_risk || 'medium'
+    }));
+
+    const yieldVal = Number(summary.yield_pct || 0);
+    document.getElementById('m-yield').textContent = `${yieldVal.toFixed(2)}%`;
+    document.getElementById('m-units').textContent = Number(summary.total_units || 0).toLocaleString();
+    document.getElementById('m-24g').textContent = Number(summary.avg_24g || 0).toFixed(1);
+    document.getElementById('m-5g').textContent = Number(summary.avg_5g || 0).toFixed(1);
+    document.getElementById('m-retry').textContent = `${Number(summary.retry_rate_pct || 0).toFixed(1)}%`;
+    renderScopeYearControls(yearsMeta);
+    renderOverallScopeTexts(summary);
+    document.getElementById('fail-count').textContent = `${fails.length} failures`;
+    document.getElementById('m-latest-wo').textContent = latestWo.work_order || 'N/A';
+    latestWoProductModel = latestWo.product_model || 'N/A';
+    const latestModelEl = document.getElementById('m-latest-product');
+    if (latestModelEl) latestModelEl.textContent = `Product: ${latestWoProductModel}`;
+    latestWoHourly = Array.isArray(latestWo.hourly) ? latestWo.hourly : [];
+    const incomingDays = Array.isArray(latestWo.days) ? latestWo.days : [];
+    const incomingKey = `${latestWo.work_order || 'N/A'}|${incomingDays.map((d) => d.date || '').join(',')}`;
+    if (incomingKey !== woDailySeriesKey) {
+      woDailySeriesKey = incomingKey;
+    }
+    woDailySeries = incomingDays;
+    renderLatestWoHourly();
+    renderThroughputDist(tpDist);
+    renderRfWindowTitles(rfMeta);
+    renderWorkOrderFilterOptions();
+    renderWoBindingStatus();
+
+    if (yieldChartRef) {
+      const labels = Array.isArray(trendRows) ? trendRows.map((row) => {
+        const s = String(row.bucket_time || '').replace('T', ' ');
+        if (!s) return '';
+        return s.slice(11, 16);
+      }) : [];
+      const values = Array.isArray(trendRows) ? trendRows.map((row) => Number(row.yield_pct || 0)) : [];
+      yieldChartRef.data.labels = labels;
+      yieldChartRef.data.datasets[0].data = values;
+      yieldChartRef.update();
+
+      const yieldTrendSub = document.getElementById('yield-trend-subtitle');
+      if (yieldTrendSub) {
+        const firstBucket = Array.isArray(trendRows)
+          ? trendRows.find((row) => row && row.bucket_time)
+          : null;
+        const dayText = firstBucket && firstBucket.bucket_time
+          ? String(firstBucket.bucket_time).slice(0, 10)
+          : null;
+        yieldTrendSub.textContent = dayText
+          ? `${dayText} 07:00-19:00`
+          : 'Recent day 07:00-19:00';
+      }
+    }
+
+    if (monthlyYieldChartRef) {
+      const labels = Array.from({ length: 12 }, (_, idx) => `${currentYear}-${String(idx + 1).padStart(2, '0')}`);
+      const values = Array.from({ length: 12 }, () => null);
+
+      if (Array.isArray(monthlyTrendRows)) {
+        monthlyTrendRows.forEach((row) => {
+          const raw = String(row?.bucket_time || '');
+          let month = Number.parseInt(raw.slice(5, 7), 10);
+          if (!Number.isFinite(month) || month < 1 || month > 12) {
+            const dt = new Date(raw);
+            month = Number.isNaN(dt.getTime()) ? NaN : (dt.getMonth() + 1);
+          }
+          if (Number.isFinite(month) && month >= 1 && month <= 12) {
+            values[month - 1] = Number(row.yield_pct || 0);
+          }
+        });
+      }
+
+      monthlyYieldChartRef.data.labels = labels;
+      monthlyYieldChartRef.data.datasets[0].data = values;
+      monthlyYieldChartRef.update();
+
+      const monthlyYieldSub = document.getElementById('monthly-yield-subtitle');
+      if (monthlyYieldSub) {
+        monthlyYieldSub.textContent = `${currentYear} monthly`;
+      }
+    }
+
+    if (pfChartRef && splitRows) {
+      const pass = Number(splitRows.pass_units || 0);
+      const fail = Number(splitRows.fail_units || 0);
+      pfChartRef.data.labels = ['Pass', 'Fail'];
+      pfChartRef.data.datasets[0].data = [pass, fail];
+      pfChartRef.update();
+
+      const detailEl = document.getElementById('pf-detail');
+      if (detailEl) {
+        detailEl.innerHTML = [
+          '<div class="pf-detail-item">',
+          '<span class="pf-detail-label">Pass</span>',
+          `<span class="pf-detail-value pass">${pass.toLocaleString()}</span>`,
+          '</div>',
+          '<div class="pf-detail-item">',
+          '<span class="pf-detail-label">Fail</span>',
+          `<span class="pf-detail-value fail">${fail.toLocaleString()}</span>`,
+          '</div>'
+        ].join('');
+      }
+    }
+
+    if (trend24gChartRef && trend5gChartRef) {
+      const rfLabels = Array.isArray(rfTrendRows) ? rfTrendRows.map((row) => (row.bucket_time || '').replace('T', ' ').slice(0, 16)) : [];
+      trend24gChartRef.data.labels = rfLabels;
+      trend24gChartRef.data.datasets[0].data = Array.isArray(rfTrendRows) ? rfTrendRows.map((row) => Number(row.avg_24g || 0)) : [];
+      trend24gChartRef.update();
+
+      trend5gChartRef.data.labels = rfLabels;
+      trend5gChartRef.data.datasets[0].data = Array.isArray(rfTrendRows) ? rfTrendRows.map((row) => Number(row.avg_5g || 0)) : [];
+      trend5gChartRef.update();
+    }
+
+    if (percChartRef) {
+      const pctLabels = Array.isArray(rfPctRows) ? rfPctRows.map((row) => (row.bucket_time || '').replace('T', ' ').slice(0, 16)) : [];
+      percChartRef.data.labels = pctLabels;
+      percChartRef.data.datasets[0].data = Array.isArray(rfPctRows) ? rfPctRows.map((row) => Number(row.p95_5g || 0)) : [];
+      percChartRef.data.datasets[1].data = Array.isArray(rfPctRows) ? rfPctRows.map((row) => Number(row.p90_5g || 0)) : [];
+      percChartRef.data.datasets[2].data = Array.isArray(rfPctRows) ? rfPctRows.map((row) => Number(row.p50_5g || 0)) : [];
+      percChartRef.update();
+    }
+
+    if (stdChartRef) {
+      stdChartRef.data.labels = Array.isArray(rfStdRows) ? rfStdRows.map((row) => row.sn || 'N/A') : [];
+      stdChartRef.data.datasets[0].data = Array.isArray(rfStdRows) ? rfStdRows.map((row) => Number(row.std_5g || 0)) : [];
+      stdChartRef.update();
+    }
+    setApiStatus(true);
+  } catch (err) {
+    console.error('API unavailable, no mock fallback enabled.', err);
+    setApiStatus(false);
+    applyNoDataState('API unavailable');
+  } finally {
+    refreshInFlight = false;
+  }
+}
+
+function setApiStatus(ok, reason = '') {
+  const el = document.getElementById('api-status');
+  if (!el) return;
+  if (ok) {
+    el.className = 'badge badge-green';
+    el.textContent = 'API: connected';
+    return;
+  }
+  el.className = 'badge badge-red';
+  el.textContent = reason ? `API: ${reason}` : 'API: disconnected';
+}
+
+function applyNoDataState(reason) {
+  workOrders = [];
+  fails = [];
+  retries = [];
+  latestWoHourly = [];
+  woDailySeries = [];
+  woDailySeriesKey = '';
+
+  document.getElementById('m-yield').textContent = '0.0%';
+  document.getElementById('m-yield-sub').textContent = `No data (${reason})`;
+  document.getElementById('m-units').textContent = '0';
+  document.getElementById('m-24g').textContent = '0.0';
+  document.getElementById('m-5g').textContent = '0.0';
+  document.getElementById('m-retry').textContent = '0.0%';
+  const unitsSub = document.getElementById('m-units-sub');
+  if (unitsSub) unitsSub.textContent = 'No data';
+  document.getElementById('m-latest-wo').textContent = 'N/A';
+  latestWoProductModel = 'N/A';
+  const latestModelEl = document.getElementById('m-latest-product');
+  if (latestModelEl) latestModelEl.textContent = 'Product: N/A';
+  document.getElementById('wo-hourly-title').textContent = 'N/A';
+  document.getElementById('fail-count').textContent = '0 failures';
+
+  if (yieldChartRef) {
+    yieldChartRef.data.labels = [];
+    yieldChartRef.data.datasets[0].data = [];
+    yieldChartRef.update();
+  }
+  if (monthlyYieldChartRef) {
+    monthlyYieldChartRef.data.labels = Array.from({ length: 12 }, (_, idx) => `${currentYear}-${String(idx + 1).padStart(2, '0')}`);
+    monthlyYieldChartRef.data.datasets[0].data = Array.from({ length: 12 }, () => null);
+    monthlyYieldChartRef.update();
+  }
+  const monthlyYieldSub = document.getElementById('monthly-yield-subtitle');
+  if (monthlyYieldSub) monthlyYieldSub.textContent = `${currentYear} monthly`;
+  if (pfChartRef) {
+    pfChartRef.data.labels = ['Pass', 'Fail'];
+    pfChartRef.data.datasets[0].data = [0, 0];
+    pfChartRef.update();
+  }
+  const pfDetail = document.getElementById('pf-detail');
+  if (pfDetail) {
+    pfDetail.innerHTML = [
+      '<div class="pf-detail-item">',
+      '<span class="pf-detail-label">Pass</span>',
+      '<span class="pf-detail-value pass">0</span>',
+      '</div>',
+      '<div class="pf-detail-item">',
+      '<span class="pf-detail-label">Fail</span>',
+      '<span class="pf-detail-value fail">0</span>',
+      '</div>'
+    ].join('');
+  }
+  if (histChartRef) {
+    histChartRef.data.labels = [];
+    histChartRef.data.datasets[0].data = [];
+    histChartRef.data.datasets[1].data = [];
+    histChartRef.update();
+  }
+  if (trend24gChartRef) {
+    trend24gChartRef.data.labels = [];
+    trend24gChartRef.data.datasets[0].data = [];
+    trend24gChartRef.update();
+  }
+  if (trend5gChartRef) {
+    trend5gChartRef.data.labels = [];
+    trend5gChartRef.data.datasets[0].data = [];
+    trend5gChartRef.update();
+  }
+  if (percChartRef) {
+    percChartRef.data.labels = [];
+    percChartRef.data.datasets[0].data = [];
+    percChartRef.data.datasets[1].data = [];
+    percChartRef.data.datasets[2].data = [];
+    percChartRef.update();
+  }
+  if (stdChartRef) {
+    stdChartRef.data.labels = [];
+    stdChartRef.data.datasets[0].data = [];
+    stdChartRef.update();
+  }
+  renderLatestWoHourly();
+  renderRfWindowTitles(null);
+  renderWorkOrderFilterOptions();
+  renderWorkOrders(workOrders);
+  renderFails();
+}
+
+function renderLatestWoHourly() {
+  if (!woHourlyChartRef) return;
+  const latestWoText = document.getElementById('m-latest-wo')?.textContent || 'N/A';
+  const productText = latestWoProductModel || 'N/A';
+  const titleText = `WO: ${latestWoText} | Product: ${productText} | 48h`;
+  if (woDailySeries.length > 0) {
+    const mergedHourly = woDailySeries
+      .flatMap((d) => (Array.isArray(d.hourly) ? d.hourly : []))
+      .sort((a, b) => String(a.hour || '').localeCompare(String(b.hour || '')))
+      .slice(-48);
+
+    woHourlyChartRef.data.labels = mergedHourly.map(r => {
+      const s = (r.hour || '').replace('T', ' ');
+      if (!s) return '';
+      return `${s.slice(5, 10)} ${s.slice(11, 16)}`;
+    });
+    woHourlyChartRef.data.datasets[0].data = mergedHourly.map(r => Number(r.units || 0));
+    woHourlyChartRef.update();
+    document.getElementById('wo-hourly-title').textContent = titleText;
+    return;
+  }
+  if (!latestWoHourly.length) {
+    woHourlyChartRef.data.labels = [];
+    woHourlyChartRef.data.datasets[0].data = [];
+    woHourlyChartRef.update();
+    document.getElementById('wo-hourly-title').textContent = 'N/A';
+    return;
+  }
+  woHourlyChartRef.data.labels = latestWoHourly.map(r => {
+    const s = (r.hour || '').replace('T', ' ');
+    if (!s) return '';
+    return `${s.slice(5, 10)} ${s.slice(11, 16)}`;
+  });
+  woHourlyChartRef.data.datasets[0].data = latestWoHourly.map(r => Number(r.units || 0));
+  woHourlyChartRef.update();
+  document.getElementById('wo-hourly-title').textContent = titleText;
+}
+
+function renderThroughputDist(data) {
+  if (!histChartRef || !data) return;
+  const b24 = Array.isArray(data.bands_24g) ? data.bands_24g : [];
+  const b5 = Array.isArray(data.bands_5g) ? data.bands_5g : [];
+  const allBins = [...new Set([...b24.map(r => r.bin), ...b5.map(r => r.bin)])];
+  allBins.sort((a, b) => parseInt(a) - parseInt(b));
+  const map24 = Object.fromEntries(b24.map(r => [r.bin, r.count]));
+  const map5 = Object.fromEntries(b5.map(r => [r.bin, r.count]));
+  histChartRef.data.labels = allBins;
+  histChartRef.data.datasets[0].data = allBins.map(b => map24[b] || 0);
+  histChartRef.data.datasets[1].data = allBins.map(b => map5[b] || 0);
+  histChartRef.update();
+}
+
+function formatWoDuration(startTime, endTime) {
+  if (!startTime || !endTime) return 'N/A';
+  const parseLocalDateTime = (input) => {
+    const text = String(input || '').replace('T', ' ').slice(0, 19);
+    const m = text.match(/^(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2}):(\d{2})$/);
+    if (!m) return null;
+    const y = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const d = Number(m[3]);
+    const h = Number(m[4]);
+    const mi = Number(m[5]);
+    const s = Number(m[6]);
+    const dt = new Date(y, mo, d, h, mi, s);
+    if (Number.isNaN(dt.getTime())) return null;
+    return dt;
+  };
+
+  const s = parseLocalDateTime(startTime);
+  const e = parseLocalDateTime(endTime);
+  if (!s || !e) return 'N/A';
+
+  const ms = e.getTime() - s.getTime();
+  if (ms < 0) return 'N/A';
+  const hours = ms / 3600000;
+
+  if (hours < 24) {
+    return `${hours.toFixed(1)} h`;
+  }
+  return `${(hours / 24).toFixed(1)} day`;
+}
+
+function getWorkOrderSortTs(row) {
+  const endTs = row?.endTime ? Date.parse(row.endTime) : NaN;
+  if (!Number.isNaN(endTs)) return endTs;
+  const startTs = row?.startTime ? Date.parse(row.startTime) : NaN;
+  if (!Number.isNaN(startTs)) return startTs;
+  return 0;
+}
+
+function applyWorkOrderFiltersAndSort(data) {
+  const woQuery = String(woSearchKeyword || '').trim().toLowerCase();
+  const modelQuery = String(woProductSearchKeyword || '').trim().toLowerCase();
+  return (Array.isArray(data) ? data : [])
+    .filter((r) => {
+      const woText = String(r.wo || '').toLowerCase();
+      const modelText = String(r.model || '').toLowerCase();
+      const woOk = !woQuery || woText.includes(woQuery);
+      const modelOk = !modelQuery || modelText.includes(modelQuery);
+      return woOk && modelOk;
+    })
+    .sort((a, b) => {
+      const diff = getWorkOrderSortTs(b) - getWorkOrderSortTs(a);
+      if (diff !== 0) return diff;
+      return String(a.wo || '').localeCompare(String(b.wo || ''));
+    });
+}
+
+function updateWorkOrderPager(totalRows, totalPages) {
+  const pager = document.getElementById('wo-pager');
+  const info = document.getElementById('wo-page-info');
+  const firstBtn = document.getElementById('wo-page-first');
+  const prevBtn = document.getElementById('wo-page-prev');
+  const nextBtn = document.getElementById('wo-page-next');
+  const lastBtn = document.getElementById('wo-page-last');
+  if (!pager || !info || !firstBtn || !prevBtn || !nextBtn || !lastBtn) return;
+
+  const shouldShow = totalRows > WO_PAGE_SIZE;
+  pager.style.display = shouldShow ? 'flex' : 'none';
+  info.textContent = `Page ${totalPages === 0 ? 0 : woCurrentPage} / ${totalPages} (${totalRows} items)`;
+
+  const atFirst = woCurrentPage <= 1;
+  const atLast = woCurrentPage >= totalPages;
+  firstBtn.disabled = !shouldShow || atFirst;
+  prevBtn.disabled = !shouldShow || atFirst;
+  nextBtn.disabled = !shouldShow || atLast;
+  lastBtn.disabled = !shouldShow || atLast;
+}
+
+// --- Work orders table ---
+function renderWorkOrders(data) {
+  const sorted = applyWorkOrderFiltersAndSort(data);
+  const total = sorted.length;
+  const totalPages = Math.max(1, Math.ceil(total / WO_PAGE_SIZE));
+  if (woCurrentPage > totalPages) woCurrentPage = totalPages;
+  if (woCurrentPage < 1) woCurrentPage = 1;
+
+  const start = (woCurrentPage - 1) * WO_PAGE_SIZE;
+  const pageRows = sorted.slice(start, start + WO_PAGE_SIZE);
+  const tb = document.getElementById('wo-tbody');
+  if (!pageRows || pageRows.length === 0) {
+    tb.innerHTML = '<tr><td colspan="11" style="color:var(--muted)">N/A</td></tr>';
+    updateWorkOrderPager(total, totalPages);
+    return;
+  }
+  tb.innerHTML = pageRows.map(r => {
+    const cls = r.yield >= 97 ? '' : r.yield >= 95 ? 'warn' : 'danger';
+    const bCls = r.status==='alarm' ? 'badge-red' : r.status==='warning' ? 'badge-amber' : 'badge-green';
+    const bLabel = r.status==='alarm' ? 'Alarm' : r.status==='warning' ? 'Warning' : 'Active';
+    return `<tr>
+      <td style="font-family:monospace;font-size:12px">${r.wo}</td>
+      <td>${r.model}</td>
+      <td style="font-family:monospace;font-size:11px">${fmtDateTime(r.startTime)}</td>
+      <td style="font-family:monospace;font-size:11px">${fmtDateTime(r.endTime)}</td>
+      <td style="font-family:monospace;font-size:11px">${formatWoDuration(r.startTime, r.endTime)}</td>
+      <td>${r.units.toLocaleString()}</td>
+      <td>
+        <div class="yield-bar-wrap">
+          <div class="yield-bar"><div class="yield-fill ${cls}" style="width:${r.yield}%"></div></div>
+          <span style="font-size:12px;font-weight:500;min-width:38px">${r.yield}%</span>
+        </div>
+      </td>
+      <td>${r.avg24}</td>
+      <td>${r.avg5g}</td>
+      <td>${r.retry}%</td>
+      <td><span class="badge ${bCls}">${bLabel}</span></td>
+    </tr>`;
+  }).join('');
+  updateWorkOrderPager(total, totalPages);
+}
+
+function filterTable(q) {
+  woSearchKeyword = String(q || '');
+  woCurrentPage = 1;
+  renderWorkOrders(workOrders);
+}
+
+function filterProductModel(q) {
+  woProductSearchKeyword = String(q || '');
+  woCurrentPage = 1;
+  renderWorkOrders(workOrders);
+}
+
+function goWorkOrdersPage(action) {
+  const filteredTotal = applyWorkOrderFiltersAndSort(workOrders).length;
+  const totalPages = Math.max(1, Math.ceil(filteredTotal / WO_PAGE_SIZE));
+  if (action === 'first') woCurrentPage = 1;
+  else if (action === 'prev') woCurrentPage = Math.max(1, woCurrentPage - 1);
+  else if (action === 'next') woCurrentPage = Math.min(totalPages, woCurrentPage + 1);
+  else if (action === 'last') woCurrentPage = totalPages;
+  renderWorkOrders(workOrders);
+}
+
+// --- Fail list ---
+function renderFails() {
+  document.getElementById('fail-tbody').innerHTML = fails.map(f => `
+    <tr class="fail-row">
+      <td style="font-family:monospace;font-size:11px">${f.time}</td>
+      <td style="font-family:monospace;font-size:11px">${f.sn}</td>
+      <td style="font-family:monospace;font-size:11px">${f.wo}</td>
+      <td><span class="badge badge-red">${f.reason}</span></td>
+      <td>${f.g24 ?? '—'}</td>
+      <td>${f.g5 ?? '—'}</td>
+      <td>${f.rssi_b} dBm</td>
+      <td>${f.rssi_a} dBm</td>
+    </tr>`).join('');
+  document.getElementById('retry-tbody').innerHTML = retries.map(r => `
+    <tr class="retry-warn">
+      <td style="font-family:monospace;font-size:11px">${r.time}</td>
+      <td style="font-family:monospace;font-size:11px">${r.sn}</td>
+      <td style="font-family:monospace;font-size:11px">${r.wo}</td>
+      <td><span class="badge ${r.risk === 'high' ? 'badge-red' : 'badge-amber'}">${r.attempts} attempts (${r.risk})</span></td>
+      <td>${r.g5}</td>
+      <td style="color:var(--red)">${r.rssi_delta} dBm</td>
+    </tr>`).join('');
+}
+
+// --- Database Tweak ---
+
+function setDbTweakStatus(text, level = 'amber') {
+  const el = document.getElementById('dbtweak-status');
+  if (!el) return;
+  const cls = level === 'green' ? 'badge-green' : level === 'red' ? 'badge-red' : 'badge-amber';
+  el.className = `badge ${cls}`;
+  el.textContent = text;
+}
+
+function dbTweakBody(extra = {}) {
+  return {
+    username: dbTweakCreds?.username || '',
+    password: dbTweakCreds?.password || '',
+    ...extra
+  };
+}
+
+function fmtDateTime(s) {
+  const t = String(s || '').replace('T', ' ');
+  return t ? t.slice(0, 19) : 'N/A';
+}
+
+function renderDbTweakWorkorders(items) {
+  const tb = document.getElementById('dbwo-tbody');
+  if (!tb) return;
+  if (!Array.isArray(items) || items.length === 0) {
+    tb.innerHTML = '<tr><td colspan="7" style="color:var(--muted)">N/A</td></tr>';
+    return;
+  }
+  tb.innerHTML = items.map((w) => `
+    <tr>
+      <td style="font-family:monospace;font-size:12px">${w.work_order || 'N/A'}</td>
+      <td>${w.product_model || 'N/A'}</td>
+      <td>${Number(w.total || 0).toLocaleString()}</td>
+      <td>${Number(w.passed || 0).toLocaleString()}</td>
+      <td>${Number(w.failed || 0).toLocaleString()}</td>
+      <td>${fmtDateTime(w.first_test)}</td>
+      <td>${fmtDateTime(w.last_test)}</td>
+    </tr>
+  `).join('');
+}
+
+function renderDbTweakProductFilter(items, preferred) {
+  const sel = document.getElementById('dbtweak-product-filter');
+  if (!sel) return;
+  const prev = preferred || sel.value || 'ALL';
+  const sorted = [...(items || [])].sort((a, b) => String(a.product_model || '').localeCompare(String(b.product_model || '')));
+  const options = ['<option value="ALL">All products</option>']
+    .concat(sorted.map((p) => {
+      const model = String(p.product_model || 'N/A');
+      return `<option value="${model}">${model} (${Number(p.total || 0)})</option>`;
+    }));
+  sel.innerHTML = options.join('');
+  const values = new Set(Array.from(sel.options).map((o) => o.value));
+  sel.value = values.has(prev) ? prev : 'ALL';
+}
+
+function renderDbTweakWorkOrderFilter(items, preferred) {
+  const sel = document.getElementById('dbtweak-wo-filter');
+  if (!sel) return;
+  const prev = preferred || sel.value || 'ALL';
+  const sorted = [...(items || [])].sort((a, b) => String(a.work_order || '').localeCompare(String(b.work_order || '')));
+  const options = ['<option value="ALL">All work orders</option>']
+    .concat(sorted.map((w) => {
+      const wo = String(w.work_order || 'N/A');
+      return `<option value="${wo}">${wo} (${Number(w.total || 0)})</option>`;
+    }));
+  sel.innerHTML = options.join('');
+  const values = new Set(Array.from(sel.options).map((o) => o.value));
+  sel.value = values.has(prev) ? prev : 'ALL';
+}
+
+function renderDbTweakRecords(items) {
+  const tb = document.getElementById('dbrec-tbody');
+  if (!tb) return;
+  if (!Array.isArray(items) || items.length === 0) {
+    tb.innerHTML = '<tr><td colspan="11" style="color:var(--muted)">N/A</td></tr>';
+    return;
+  }
+  tb.innerHTML = items.map((r) => `
+    <tr>
+      <td>${r.id}</td>
+      <td style="font-family:monospace;font-size:11px">${fmtDateTime(r.test_time)}</td>
+      <td style="font-family:monospace;font-size:11px">${r.work_order || 'N/A'}</td>
+      <td style="font-family:monospace;font-size:11px">${r.sn || 'N/A'}</td>
+      <td>${r.product_model || 'N/A'}</td>
+      <td><span class="badge ${r.wifi_result === true ? 'badge-green' : r.wifi_result === false ? 'badge-red' : 'badge-amber'}">${r.wifi_result === true ? 'PASS' : r.wifi_result === false ? 'FAIL' : 'N/A'}</span></td>
+      <td><span class="badge ${r.bt_result === true ? 'badge-green' : r.bt_result === false ? 'badge-red' : 'badge-amber'}">${r.bt_result === true ? 'PASS' : r.bt_result === false ? 'FAIL' : 'N/A'}</span></td>
+      <td>${r.avg_24g ?? '—'}</td>
+      <td>${r.avg_5g ?? '—'}</td>
+      <td title="${r.source_file || ''}" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        ${r.source_file ? `<button class="btn btn-sm" onclick="dbTweakDownloadSource(${Number(r.id || 0)})">Download</button>` : 'N/A'}
+      </td>
+      <td><button class="btn btn-sm" style="background:var(--red-bg);color:var(--red);border-color:rgba(163,45,45,0.35)" onclick="dbTweakDeleteRecord(${Number(r.id || 0)})">Delete</button></td>
+    </tr>
+  `).join('');
+}
+
+async function dbTweakDownloadSource(id) {
+  if (!dbTweakCreds || !id) return;
+  try {
+    const blob = await apiPostBlob('/api/db-tweak/download-record-log', dbTweakBody({ id }));
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `record_${id}.log`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert(`Download failed: ${err.message}`);
+  }
+}
+
+async function dbTweakLogin() {
+  const username = (document.getElementById('db-user')?.value || '').trim();
+  const password = (document.getElementById('db-pass')?.value || '').trim();
+  if (!username || !password) {
+    setDbTweakStatus('DB: username/password required', 'red');
+    return;
+  }
+  setDbTweakStatus('DB: verifying credentials...', 'amber');
+  try {
+    const res = await apiPost('/api/db-tweak/login', { username, password });
+    dbTweakCreds = { username, password };
+    document.getElementById('dbtweak-login-panel').style.display = 'none';
+    document.getElementById('dbtweak-data-panel').style.display = 'block';
+    setDbTweakStatus(`DB: connected (${res.db_user})`, 'green');
+    await dbTweakRefresh('ALL');
+  } catch (err) {
+    setDbTweakStatus('DB: login failed', 'red');
+    alert(`Database login failed: ${err.message}`);
+  }
+}
+
+function onEnterDbTweakPage() {
+  const loginPanel = document.getElementById('dbtweak-login-panel');
+  const dataPanel = document.getElementById('dbtweak-data-panel');
+  if (!loginPanel || !dataPanel) return;
+  if (!dbTweakCreds) {
+    loginPanel.style.display = 'block';
+    dataPanel.style.display = 'none';
+    setDbTweakStatus('DB: login required', 'amber');
+    return;
+  }
+  loginPanel.style.display = 'none';
+  dataPanel.style.display = 'block';
+  dbTweakRefresh();
+}
+
+async function dbTweakRefresh(forceWorkOrder) {
+  if (!dbTweakCreds) return;
+  const sel = document.getElementById('dbtweak-wo-filter');
+  const productSel = document.getElementById('dbtweak-product-filter');
+  const limitSel = document.getElementById('dbtweak-limit');
+  const selectedWorkOrder = forceWorkOrder || sel?.value || 'ALL';
+  const selectedProduct = productSel?.value || 'ALL';
+  const limit = Number(limitSel?.value || 300);
+  setDbTweakStatus('DB: syncing...', 'amber');
+  try {
+    const [prodRes, woRes, recRes] = await Promise.all([
+      apiPost('/api/db-tweak/products', dbTweakBody()),
+      apiPost('/api/db-tweak/workorders', dbTweakBody({ product_model: selectedProduct })),
+      apiPost('/api/db-tweak/records', dbTweakBody({ work_order: selectedWorkOrder, product_model: selectedProduct, limit }))
+    ]);
+    dbTweakProducts = Array.isArray(prodRes.items) ? prodRes.items : [];
+    dbTweakWorkorders = Array.isArray(woRes.items) ? woRes.items : [];
+    dbTweakRecords = Array.isArray(recRes.items) ? recRes.items : [];
+
+    renderDbTweakProductFilter(dbTweakProducts, selectedProduct);
+    renderDbTweakWorkOrderFilter(dbTweakWorkorders, selectedWorkOrder);
+    renderDbTweakWorkorders(dbTweakWorkorders);
+    renderDbTweakRecords(dbTweakRecords);
+    document.getElementById('dbwo-count').textContent = String(dbTweakWorkorders.length);
+    document.getElementById('dbrec-count').textContent = String(dbTweakRecords.length);
+    setDbTweakStatus('DB: synced', 'green');
+  } catch (err) {
+    setDbTweakStatus('DB: sync failed', 'red');
+    alert(`Database query failed: ${err.message}`);
+  }
+}
+
+async function dbTweakDeleteRecord(id) {
+  if (!dbTweakCreds || !id) return;
+  const ok = confirm(`Delete record ID=${id}? This action is irreversible.`);
+  if (!ok) return;
+  try {
+    await apiPost('/api/db-tweak/delete-record', dbTweakBody({ id }));
+    await dbTweakRefresh();
+  } catch (err) {
+    alert(`Delete failed: ${err.message}`);
+  }
+}
+
+async function dbTweakDeleteWorkOrder() {
+  if (!dbTweakCreds) return;
+  const sel = document.getElementById('dbtweak-wo-filter');
+  const wo = sel?.value || 'ALL';
+  if (!wo || wo === 'ALL') {
+    alert('Please select a specific work order before batch delete.');
+    return;
+  }
+  const ok = confirm(`Delete all records of work order ${wo}? This action is irreversible.`);
+  if (!ok) return;
+  try {
+    await apiPost('/api/db-tweak/delete-workorder', dbTweakBody({ work_order: wo }));
+    await dbTweakRefresh('ALL');
+  } catch (err) {
+    alert(`Delete failed: ${err.message}`);
+  }
+}
+
+async function filterDashboard(v) {
+  currentWorkOrder = v || 'ALL';
+  if (currentWorkOrder === 'ALL') {
+    forceWholeYearAllSelection();
+  }
+  if (currentWorkOrder && currentWorkOrder !== 'ALL') {
+    const matched = (workOrders || []).find((item) => item.wo === currentWorkOrder);
+    if (matched && matched.model && matched.model !== 'N/A') {
+      currentProductModel = matched.model;
+    }
+  }
+  await waitUntilRefreshIdle();
+  await refreshDataFromApi();
+  renderWorkOrders(workOrders);
+  renderFails();
+  renderWoBindingStatus();
+}
+
+function renderWorkOrderFilterOptions() {
+  const sel = document.getElementById('wo-filter');
+  if (!sel) return;
+
+  const allItems = (workOrders || []).filter((w) => w.wo && w.wo !== 'N/A');
+  // Client-side product filter — handles auto-selected product without needing an extra API call
+  const items = currentProductModel !== 'ALL'
+    ? allItems.filter((w) => !w.model || w.model === 'N/A' || w.model === currentProductModel)
+    : allItems;
+
+  if (items.length === 0) {
+    currentWorkOrder = 'ALL';
+    sel.innerHTML = '<option value="N/A">N/A</option>';
+    return;
+  }
+
+  const prev = sel.value;
+  const desired = currentWorkOrder || prev || 'ALL';
+  const allLabel = currentProductModel && currentProductModel !== 'ALL'
+    ? 'All work orders for selected product'
+    : 'All work orders';
+  const options = [`<option value="ALL">${allLabel}</option>`]
+    .concat(items.map((item) => `<option value="${item.wo}">${item.wo} | ${item.model || 'N/A'}</option>`));
+  sel.innerHTML = options.join('');
+  const values = new Set(items.map((item) => item.wo));
+  if (desired === 'ALL') currentWorkOrder = 'ALL';
+  else if (values.has(desired)) currentWorkOrder = desired;
+  else currentWorkOrder = 'ALL';
+  // Auto-select when Recent day exposes exactly one work order
+  if (currentScope === 'latest_day' && items.length === 1) {
+    currentWorkOrder = items[0].wo;
+  }
+  sel.value = currentWorkOrder;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+apiVersion: 1
+
+datasources:
+  - name: WiFi PostgreSQL
+    type: postgres
+    access: proxy
+    isDefault: true
+    url: postgres:5432
+    user: qc
+    secureJsonData:
+      password: qcpass
+    jsonData:
+      database: wifitest
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
