@@ -736,9 +736,10 @@ function refreshChartTheme() {
     if (chart.options?.plugins?.legend?.labels) {
       chart.options.plugins.legend.labels.color = chartText;
     }
-    if (chart.options?.scales?.x?.ticks) chart.options.scales.x.ticks.color = chartText;
-    if (chart.options?.scales?.y?.ticks) chart.options.scales.y.ticks.color = chartText;
-    if (chart.options?.scales?.y?.grid) chart.options.scales.y.grid.color = chartGrid;
+    Object.values(chart.options?.scales || {}).forEach((scale) => {
+      if (scale?.ticks) scale.ticks.color = chartText;
+      if (scale?.grid) scale.grid.color = chartGrid;
+    });
     chart.update();
   });
 }
@@ -837,19 +838,66 @@ window.addEventListener('load', async () => {
   bindAutoCarouselActivityWatchers();
 
   // Yield trend
-  yieldChartRef = mkChart('yieldChart','line', HOURS, [{
-    label:'Yield %', data:yieldData,
-    borderColor:'#3B6D11', backgroundColor:'rgba(59,109,17,0.08)',
-    fill:true, tension:0.4, pointRadius:3, pointBackgroundColor:'#3B6D11', borderWidth:2
-  }], {y:{min:88,max:100}});
+  yieldChartRef = mkChart('yieldChart','bar', HOURS, [
+    {
+      label:'Tested units', data:[],
+      backgroundColor:'rgba(24,95,165,0.45)', borderColor:'#185FA5', borderWidth:1,
+      borderRadius:4, yAxisID:'yUnits', order:2
+    },
+    {
+      type:'line', label:'Yield %', data:yieldData,
+      borderColor:'#3B6D11', backgroundColor:'rgba(59,109,17,0.08)',
+      fill:false, tension:0.35, pointRadius:3, pointBackgroundColor:'#3B6D11', borderWidth:2,
+      yAxisID:'yYield', order:1
+    }
+  ], {extra:{
+    scales: {
+      x: { grid:{display:false}, ticks:{color:getCssVar('--chart-text') || '#a9b3c6', font:{size:10}} },
+      yUnits: {
+        type:'linear', position:'left', beginAtZero:true,
+        grid:{color:getCssVar('--chart-grid') || 'rgba(255,255,255,0.08)'},
+        ticks:{color:getCssVar('--chart-text') || '#a9b3c6', font:{size:10}},
+        title:{display:true, text:'Tested units', color:getCssVar('--chart-text') || '#a9b3c6', font:{size:10}}
+      },
+      yYield: {
+        type:'linear', position:'right', min:88, max:100,
+        grid:{drawOnChartArea:false, color:getCssVar('--chart-grid') || 'rgba(255,255,255,0.08)'},
+        ticks:{color:getCssVar('--chart-text') || '#a9b3c6', font:{size:10}, callback:(value) => `${value}%`},
+        title:{display:true, text:'Yield %', color:getCssVar('--chart-text') || '#a9b3c6', font:{size:10}}
+      }
+    }
+  }});
 
   // Monthly yield trend
-  monthlyYieldChartRef = mkChart('monthlyYieldChart','line', [], [{
-    label:'Monthly Yield %', data:[],
-    borderColor:'#4ea1ff', backgroundColor:'rgba(78,161,255,0.10)',
-    fill:true, tension:0.35, pointRadius:3, pointBackgroundColor:'#4ea1ff', borderWidth:2,
-    spanGaps:false
-  }], {y:{min:88,max:100}});
+  monthlyYieldChartRef = mkChart('monthlyYieldChart','bar', [], [
+    {
+      label:'Tested units', data:[],
+      backgroundColor:'rgba(83,74,183,0.40)', borderColor:'#534AB7', borderWidth:1,
+      borderRadius:4, yAxisID:'yUnits', order:2
+    },
+    {
+      type:'line', label:'Yield %', data:[],
+      borderColor:'#4ea1ff', backgroundColor:'rgba(78,161,255,0.10)',
+      fill:false, tension:0.35, pointRadius:3, pointBackgroundColor:'#4ea1ff', borderWidth:2,
+      spanGaps:false, yAxisID:'yYield', order:1
+    }
+  ], {extra:{
+    scales: {
+      x: { grid:{display:false}, ticks:{color:getCssVar('--chart-text') || '#a9b3c6', font:{size:10}} },
+      yUnits: {
+        type:'linear', position:'left', beginAtZero:true,
+        grid:{color:getCssVar('--chart-grid') || 'rgba(255,255,255,0.08)'},
+        ticks:{color:getCssVar('--chart-text') || '#a9b3c6', font:{size:10}},
+        title:{display:true, text:'Tested units', color:getCssVar('--chart-text') || '#a9b3c6', font:{size:10}}
+      },
+      yYield: {
+        type:'linear', position:'right', min:88, max:100,
+        grid:{drawOnChartArea:false, color:getCssVar('--chart-grid') || 'rgba(255,255,255,0.08)'},
+        ticks:{color:getCssVar('--chart-text') || '#a9b3c6', font:{size:10}, callback:(value) => `${value}%`},
+        title:{display:true, text:'Yield %', color:getCssVar('--chart-text') || '#a9b3c6', font:{size:10}}
+      }
+    }
+  }});
 
   // Pass/Fail donut
   pfChartRef = mkChart('pfChart','doughnut', ['Pass','Fail'], [{
@@ -1260,9 +1308,11 @@ async function refreshDataFromApi() {
         if (!s) return '';
         return s.slice(11, 16);
       }) : [];
-      const values = Array.isArray(trendRows) ? trendRows.map((row) => Number(row.yield_pct || 0)) : [];
+      const unitValues = Array.isArray(trendRows) ? trendRows.map((row) => Number(row.total_units || 0)) : [];
+      const yieldValues = Array.isArray(trendRows) ? trendRows.map((row) => Number(row.yield_pct || 0)) : [];
       yieldChartRef.data.labels = labels;
-      yieldChartRef.data.datasets[0].data = values;
+      yieldChartRef.data.datasets[0].data = unitValues;
+      yieldChartRef.data.datasets[1].data = yieldValues;
       yieldChartRef.update();
 
       const yieldTrendSub = document.getElementById('yield-trend-subtitle');
@@ -1298,7 +1348,18 @@ async function refreshDataFromApi() {
       }
 
       monthlyYieldChartRef.data.labels = labels;
-      monthlyYieldChartRef.data.datasets[0].data = values;
+      monthlyYieldChartRef.data.datasets[0].data = Array.isArray(monthlyTrendRows)
+        ? Array.from({ length: 12 }, (_, idx) => {
+            const target = idx + 1;
+            const row = monthlyTrendRows.find((item) => {
+              const raw = String(item?.bucket_time || '');
+              const month = Number.parseInt(raw.slice(5, 7), 10);
+              return month === target;
+            });
+            return Number(row?.total_units || 0);
+          })
+        : Array.from({ length: 12 }, () => 0);
+      monthlyYieldChartRef.data.datasets[1].data = values;
       monthlyYieldChartRef.update();
 
       const monthlyYieldSub = document.getElementById('monthly-yield-subtitle');
@@ -1402,11 +1463,13 @@ function applyNoDataState(reason) {
   if (yieldChartRef) {
     yieldChartRef.data.labels = [];
     yieldChartRef.data.datasets[0].data = [];
+    yieldChartRef.data.datasets[1].data = [];
     yieldChartRef.update();
   }
   if (monthlyYieldChartRef) {
     monthlyYieldChartRef.data.labels = Array.from({ length: 12 }, (_, idx) => `${currentYear}-${String(idx + 1).padStart(2, '0')}`);
-    monthlyYieldChartRef.data.datasets[0].data = Array.from({ length: 12 }, () => null);
+    monthlyYieldChartRef.data.datasets[0].data = Array.from({ length: 12 }, () => 0);
+    monthlyYieldChartRef.data.datasets[1].data = Array.from({ length: 12 }, () => null);
     monthlyYieldChartRef.update();
   }
   const monthlyYieldSub = document.getElementById('monthly-yield-subtitle');
