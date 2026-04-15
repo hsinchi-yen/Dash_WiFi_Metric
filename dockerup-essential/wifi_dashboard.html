@@ -354,9 +354,9 @@
             <div class="metric-sub">Mbits/sec</div>
           </div>
           <div class="metric-card">
-            <div class="metric-label">Retry rate</div>
-            <div class="metric-value" style="color:var(--amber)" id="m-retry">0.0%</div>
-            <div class="metric-sub">Attempt 2+ but PASS</div>
+              <div class="metric-label">Retry</div>
+              <div class="metric-value" style="color:var(--amber)" id="m-retry">0</div>
+              <div class="metric-sub">Units with 2+ attempts</div>
           </div>
           <div class="metric-card">
             <div class="metric-label">Latest Work Order</div>
@@ -1233,7 +1233,7 @@ async function refreshDataFromApi() {
     document.getElementById('m-units').textContent = Number(summary.total_units || 0).toLocaleString();
     document.getElementById('m-24g').textContent = Number(summary.avg_24g || 0).toFixed(1);
     document.getElementById('m-5g').textContent = Number(summary.avg_5g || 0).toFixed(1);
-    document.getElementById('m-retry').textContent = `${Number(summary.retry_rate_pct || 0).toFixed(1)}%`;
+    document.getElementById('m-retry').textContent = Number(summary.retry_units || 0).toLocaleString();
     renderScopeYearControls(yearsMeta);
     renderOverallScopeTexts(summary);
     document.getElementById('fail-count').textContent = `${fails.length} failures`;
@@ -1389,7 +1389,7 @@ function applyNoDataState(reason) {
   document.getElementById('m-units').textContent = '0';
   document.getElementById('m-24g').textContent = '0.0';
   document.getElementById('m-5g').textContent = '0.0';
-  document.getElementById('m-retry').textContent = '0.0%';
+  document.getElementById('m-retry').textContent = '0';
   const unitsSub = document.getElementById('m-units-sub');
   if (unitsSub) unitsSub.textContent = 'No data';
   document.getElementById('m-latest-wo').textContent = 'N/A';
