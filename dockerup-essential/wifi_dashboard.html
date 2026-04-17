@@ -271,6 +271,37 @@
     gap: 6px;
     flex-wrap: wrap;
   }
+
+  /* Fail summary bar */
+  .fail-summary-bar {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    background: var(--surface2);
+    border-radius: var(--radius-sm);
+    align-items: center;
+    min-height: 38px;
+  }
+  .summary-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-right: 2px;
+    flex-shrink: 0;
+  }
+  /* Last refresh in sidebar */
+  .last-refresh-text {
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+    padding: 2px 4px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.4;
+  }
 </style>
 </head>
 <body>
@@ -304,6 +335,7 @@
     <div class="sidebar-footer">
       <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()">Theme: Dark</button>
       <span class="badge badge-amber" id="api-status">API: checking...</span>
+      <div class="last-refresh-text" id="last-refresh">—</div>
     </div>
   </aside>
 
@@ -394,8 +426,17 @@
             <div class="chart-wrap"><canvas id="monthlyYieldChart"></canvas></div>
           </div>
           <div class="card">
-            <div class="card-title">Throughput distribution — 2.4G vs 5G <span id="tpdist-subtitle">Whole year cumulative</span></div>
-            <div class="chart-wrap" style="height:160px"><canvas id="histChart"></canvas></div>
+            <div class="card-title">Throughput distribution <span id="tpdist-subtitle" style="font-size:10px">Whole year cumulative</span></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end">
+              <div>
+                <div style="font-size:10px;color:var(--muted);margin-bottom:4px;font-weight:600">2.4G (Mbps)</div>
+                <div class="chart-wrap" style="height:72px"><canvas id="hist24gChart"></canvas></div>
+              </div>
+              <div>
+                <div style="font-size:10px;color:var(--muted);margin-bottom:4px;font-weight:600">5G (Mbps)</div>
+                <div class="chart-wrap" style="height:72px"><canvas id="hist5gChart"></canvas></div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -413,6 +454,7 @@
         <div class="topbar-right">
           <input type="text" placeholder="Search work order..." oninput="filterTable(this.value)"/>
           <input type="text" placeholder="Search product model..." oninput="filterProductModel(this.value)"/>
+          <button class="btn btn-sm" onclick="exportWoCsv()" title="Export filtered work orders as CSV">⬇ CSV</button>
         </div>
       </div>
       <div class="content">
@@ -455,19 +497,29 @@
       <div class="topbar">
         <h2>Fail list</h2>
         <div class="topbar-right">
-          <span class="badge badge-red" id="fail-count">41 failures</span>
+          <input type="text" id="fail-search" placeholder="Search SN / WO / reason..." oninput="filterFails(this.value)" style="min-width:220px"/>
+          <button class="btn btn-sm" onclick="exportFailsCsv()" title="Export current fail list as CSV">⬇ CSV</button>
+          <span class="badge badge-red" id="fail-count">0 failures</span>
         </div>
       </div>
       <div class="content">
+        <!-- Pareto Analysis -->
+        <div class="card" style="margin-bottom:12px;">
+          <div class="card-title">Fail Reason Pareto Analysis <span id="pareto-subtitle" style="font-size:11px;color:var(--muted);font-weight:400"></span></div>
+          <div id="pareto-container"><p style="color:var(--muted);font-size:12px;padding:6px 0">No failure data</p></div>
+        </div>
         <div class="tabs">
           <div class="tab active" onclick="showTab('all-fails',this)">All failures</div>
           <div class="tab" onclick="showTab('retry-warn',this)">Retry warnings</div>
         </div>
         <div class="tab-content active" id="tab-all-fails">
+          <div class="fail-summary-bar" id="fail-summary-bar">
+            <span class="summary-label">By type:</span>
+          </div>
           <div class="card">
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Time</th><th>SN</th><th>Work order</th><th>Fail reason</th><th>2.4G (Mbps)</th><th>5G (Mbps)</th><th>RSSI before</th><th>RSSI after</th></tr></thead>
+                <thead><tr><th>Time</th><th>SN</th><th>Work order</th><th>Fail reason</th><th>2.4G (Mbps)</th><th>5G (Mbps)</th><th>RSSI before 5G</th><th>RSSI after 5G</th><th>RSSI Δ5G</th></tr></thead>
                 <tbody id="fail-tbody"></tbody>
               </table>
             </div>
@@ -478,7 +530,7 @@
             <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">Units that PASSED but required 2+ attempts — early RF warning indicators.</p>
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Time</th><th>SN</th><th>Work order</th><th>Attempts</th><th>Avg 5G (Mbps)</th><th>RSSI delta</th></tr></thead>
+                <thead><tr><th>Time</th><th>SN</th><th>Work order</th><th>Product</th><th>Attempts</th><th>Avg 5G (Mbps)</th><th>RSSI Δ5G</th></tr></thead>
                 <tbody id="retry-tbody"></tbody>
               </table>
             </div>
@@ -663,12 +715,24 @@ function detectApiBase() {
 const API_BASE = detectApiBase();
 const LIVE_DATA_ENABLED = true;
 
+// ─── Formatting utilities ──────────────────────────────────────────────────────
+const fmt = {
+  num: (v, d=1) => (v != null && !isNaN(Number(v))) ? Number(v).toFixed(d) : '—',
+  dBm: (v) => (v != null && !isNaN(Number(v))) ? `${Number(v).toFixed(1)} dBm` : '—',
+};
+function yieldColor(pct) {
+  if (pct >= 99) return 'var(--green)';
+  if (pct >= 97) return 'var(--amber)';
+  return 'var(--red)';
+}
+
 const HOURS = [];
 const yieldData = [];
 
 let yieldChartRef = null;
 let pfChartRef = null;
-let histChartRef = null;
+let hist24gChartRef = null;
+let hist5gChartRef = null;
 let woHourlyChartRef = null;
 let trend24gChartRef = null;
 let trend5gChartRef = null;
@@ -707,6 +771,9 @@ let autoCarouselIdleTimer = null;
 let autoCarouselInterval = null;
 let autoCarouselIndex = 0;
 let sidebarClockTimer = null;
+let failSearchKeyword = '';
+let lastRefreshTime = null;
+let refreshCountdownTimer = null;
 
 function getCssVar(name) {
   return getComputedStyle(document.body).getPropertyValue(name).trim();
@@ -731,7 +798,7 @@ function initTheme() {
 function refreshChartTheme() {
   const chartText = getCssVar('--chart-text') || '#a9b3c6';
   const chartGrid = getCssVar('--chart-grid') || 'rgba(255,255,255,0.08)';
-  const charts = [yieldChartRef, monthlyYieldChartRef, pfChartRef, histChartRef, woHourlyChartRef, trend24gChartRef, trend5gChartRef, percChartRef, stdChartRef].filter(Boolean);
+  const charts = [yieldChartRef, monthlyYieldChartRef, pfChartRef, hist24gChartRef, hist5gChartRef, woHourlyChartRef, trend24gChartRef, trend5gChartRef, percChartRef, stdChartRef].filter(Boolean);
   charts.forEach((chart) => {
     if (chart.options?.plugins?.legend?.labels) {
       chart.options.plugins.legend.labels.color = chartText;
@@ -860,7 +927,7 @@ window.addEventListener('load', async () => {
         title:{display:true, text:'Tested units', color:getCssVar('--chart-text') || '#a9b3c6', font:{size:10}}
       },
       yYield: {
-        type:'linear', position:'right', min:88, max:100,
+        type:'linear', position:'right', suggestedMax:100,
         grid:{drawOnChartArea:false, color:getCssVar('--chart-grid') || 'rgba(255,255,255,0.08)'},
         ticks:{color:getCssVar('--chart-text') || '#a9b3c6', font:{size:10}, callback:(value) => `${value}%`},
         title:{display:true, text:'Yield %', color:getCssVar('--chart-text') || '#a9b3c6', font:{size:10}}
@@ -891,7 +958,7 @@ window.addEventListener('load', async () => {
         title:{display:true, text:'Tested units', color:getCssVar('--chart-text') || '#a9b3c6', font:{size:10}}
       },
       yYield: {
-        type:'linear', position:'right', min:88, max:100,
+        type:'linear', position:'right', suggestedMax:100,
         grid:{drawOnChartArea:false, color:getCssVar('--chart-grid') || 'rgba(255,255,255,0.08)'},
         ticks:{color:getCssVar('--chart-text') || '#a9b3c6', font:{size:10}, callback:(value) => `${value}%`},
         title:{display:true, text:'Yield %', color:getCssVar('--chart-text') || '#a9b3c6', font:{size:10}}
@@ -906,11 +973,13 @@ window.addEventListener('load', async () => {
     borderWidth:0
   }], {extra:{cutout:'68%'}});
 
-  // Throughput distribution
-  histChartRef = mkChart('histChart','bar', [], [
-    {label:'2.4G',data:[],backgroundColor:'rgba(24,95,165,0.6)',borderRadius:3},
-    {label:'5G',data:[],backgroundColor:'rgba(83,74,183,0.6)',borderRadius:3}
-  ]);
+  // Throughput distribution — separate charts per band
+  hist24gChartRef = mkChart('hist24gChart','bar', [], [
+    {label:'2.4G Mbps',data:[],backgroundColor:'rgba(24,95,165,0.65)',borderRadius:3}
+  ], {extra:{plugins:{legend:{display:false}}}});
+  hist5gChartRef = mkChart('hist5gChart','bar', [], [
+    {label:'5G Mbps',data:[],backgroundColor:'rgba(83,74,183,0.65)',borderRadius:3}
+  ], {extra:{plugins:{legend:{display:false}}}});
 
   // Throughput trends
   trend24gChartRef = mkChart('trend24g','line', [], [{label:'Avg 2.4G Mbps',data:[],borderColor:'#185FA5',backgroundColor:'rgba(24,95,165,0.06)',fill:true,tension:0.4,pointRadius:3,borderWidth:2}],{y:{min:0,max:110}});
@@ -935,6 +1004,7 @@ window.addEventListener('load', async () => {
   renderWorkOrderFilterOptions();
   renderWorkOrders(workOrders);
   renderFails();
+  startRefreshCountdown();
 
   setInterval(() => {
     refreshDataFromApi();
@@ -1263,13 +1333,15 @@ async function refreshDataFromApi() {
       g24: r.avg_24g,
       g5: r.avg_5g,
       rssi_b: r.rssi_before_5g,
-      rssi_a: r.rssi_after_5g
+      rssi_a: r.rssi_after_5g,
+      rssi_delta: r.rssi_delta_5g,
     }));
 
     retries = retryRows.map(r => ({
       time: (r.test_time || '').replace('T', ' ').slice(0, 19),
       sn: r.sn || 'N/A',
       wo: r.work_order || 'N/A',
+      model: r.product_model || 'N/A',
       attempts: Number(r.attempts || 0),
       g5: r.avg_5g,
       rssi_delta: r.rssi_delta_5g,
@@ -1278,6 +1350,7 @@ async function refreshDataFromApi() {
 
     const yieldVal = Number(summary.yield_pct || 0);
     document.getElementById('m-yield').textContent = `${yieldVal.toFixed(2)}%`;
+    document.getElementById('m-yield').style.color = yieldColor(yieldVal);
     document.getElementById('m-units').textContent = Number(summary.total_units || 0).toLocaleString();
     document.getElementById('m-24g').textContent = Number(summary.avg_24g || 0).toFixed(1);
     document.getElementById('m-5g').textContent = Number(summary.avg_5g || 0).toFixed(1);
@@ -1416,6 +1489,7 @@ async function refreshDataFromApi() {
       stdChartRef.update();
     }
     setApiStatus(true);
+    lastRefreshTime = Date.now();
   } catch (err) {
     console.error('API unavailable, no mock fallback enabled.', err);
     setApiStatus(false);
@@ -1492,11 +1566,15 @@ function applyNoDataState(reason) {
       '</div>'
     ].join('');
   }
-  if (histChartRef) {
-    histChartRef.data.labels = [];
-    histChartRef.data.datasets[0].data = [];
-    histChartRef.data.datasets[1].data = [];
-    histChartRef.update();
+  if (hist24gChartRef) {
+    hist24gChartRef.data.labels = [];
+    hist24gChartRef.data.datasets[0].data = [];
+    hist24gChartRef.update();
+  }
+  if (hist5gChartRef) {
+    hist5gChartRef.data.labels = [];
+    hist5gChartRef.data.datasets[0].data = [];
+    hist5gChartRef.update();
   }
   if (trend24gChartRef) {
     trend24gChartRef.data.labels = [];
@@ -1566,17 +1644,19 @@ function renderLatestWoHourly() {
 }
 
 function renderThroughputDist(data) {
-  if (!histChartRef || !data) return;
+  if (!data) return;
   const b24 = Array.isArray(data.bands_24g) ? data.bands_24g : [];
   const b5 = Array.isArray(data.bands_5g) ? data.bands_5g : [];
-  const allBins = [...new Set([...b24.map(r => r.bin), ...b5.map(r => r.bin)])];
-  allBins.sort((a, b) => parseInt(a) - parseInt(b));
-  const map24 = Object.fromEntries(b24.map(r => [r.bin, r.count]));
-  const map5 = Object.fromEntries(b5.map(r => [r.bin, r.count]));
-  histChartRef.data.labels = allBins;
-  histChartRef.data.datasets[0].data = allBins.map(b => map24[b] || 0);
-  histChartRef.data.datasets[1].data = allBins.map(b => map5[b] || 0);
-  histChartRef.update();
+  if (hist24gChartRef) {
+    hist24gChartRef.data.labels = b24.map(r => r.bin);
+    hist24gChartRef.data.datasets[0].data = b24.map(r => r.count);
+    hist24gChartRef.update();
+  }
+  if (hist5gChartRef) {
+    hist5gChartRef.data.labels = b5.map(r => r.bin);
+    hist5gChartRef.data.datasets[0].data = b5.map(r => r.count);
+    hist5gChartRef.update();
+  }
 }
 
 function formatWoDuration(startTime, endTime) {
@@ -1723,26 +1803,41 @@ function goWorkOrdersPage(action) {
 
 // --- Fail list ---
 function renderFails() {
-  document.getElementById('fail-tbody').innerHTML = fails.map(f => `
+  const q = String(failSearchKeyword || '').trim().toLowerCase();
+  const filtered = q
+    ? fails.filter(f =>
+        String(f.sn||'').toLowerCase().includes(q) ||
+        String(f.wo||'').toLowerCase().includes(q) ||
+        String(f.reason||'').toLowerCase().includes(q)
+      )
+    : fails;
+
+  document.getElementById('fail-tbody').innerHTML = filtered.map(f => `
     <tr class="fail-row">
       <td style="font-family:monospace;font-size:11px">${f.time}</td>
       <td style="font-family:monospace;font-size:11px">${f.sn}</td>
       <td style="font-family:monospace;font-size:11px">${f.wo}</td>
       <td><span class="badge badge-red">${f.reason}</span></td>
-      <td>${f.g24 ?? '—'}</td>
-      <td>${f.g5 ?? '—'}</td>
-      <td>${f.rssi_b} dBm</td>
-      <td>${f.rssi_a} dBm</td>
+      <td>${fmt.num(f.g24)}</td>
+      <td>${fmt.num(f.g5)}</td>
+      <td>${fmt.dBm(f.rssi_b)}</td>
+      <td>${fmt.dBm(f.rssi_a)}</td>
+      <td style="color:${f.rssi_delta != null && f.rssi_delta < -10 ? 'var(--red)' : 'inherit'}">${fmt.dBm(f.rssi_delta)}</td>
     </tr>`).join('');
+
   document.getElementById('retry-tbody').innerHTML = retries.map(r => `
     <tr class="retry-warn">
       <td style="font-family:monospace;font-size:11px">${r.time}</td>
       <td style="font-family:monospace;font-size:11px">${r.sn}</td>
       <td style="font-family:monospace;font-size:11px">${r.wo}</td>
+      <td style="font-size:12px">${r.model}</td>
       <td><span class="badge ${r.risk === 'high' ? 'badge-red' : 'badge-amber'}">${r.attempts} attempts (${r.risk})</span></td>
-      <td>${r.g5}</td>
-      <td style="color:var(--red)">${r.rssi_delta} dBm</td>
+      <td>${fmt.num(r.g5)}</td>
+      <td style="color:var(--red)">${fmt.dBm(r.rssi_delta)}</td>
     </tr>`).join('');
+
+  renderFailSummaryBar(filtered);
+  renderPareto(filtered);
 }
 
 // --- Database Tweak ---
@@ -2010,6 +2105,156 @@ function renderWorkOrderFilterOptions() {
     currentWorkOrder = items[0].wo;
   }
   sel.value = currentWorkOrder;
+}
+
+// ─── Last-refresh countdown ────────────────────────────────────────────────────
+function startRefreshCountdown() {
+  if (refreshCountdownTimer) clearInterval(refreshCountdownTimer);
+  refreshCountdownTimer = setInterval(() => {
+    const el = document.getElementById('last-refresh');
+    if (!el || !lastRefreshTime) return;
+    const secAgo = Math.round((Date.now() - lastRefreshTime) / 1000);
+    const secsToNext = Math.max(0, Math.round(AUTO_REFRESH_MS / 1000) - secAgo);
+    el.textContent = `Updated ${secAgo}s ago\n⟳ ${secsToNext}s`;
+  }, 1000);
+}
+
+// ─── Fail summary bar ──────────────────────────────────────────────────────────
+function renderFailSummaryBar(failsData) {
+  const el = document.getElementById('fail-summary-bar');
+  if (!el) return;
+  if (!failsData || failsData.length === 0) {
+    el.innerHTML = '<span class="summary-label">By type:</span><span style="color:var(--muted);font-size:12px">No data</span>';
+    return;
+  }
+  const counts = {};
+  failsData.forEach(f => { counts[f.reason] = (counts[f.reason] || 0) + 1; });
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const badges = sorted.map(([reason, cnt]) =>
+    `<span class="badge badge-red" style="cursor:pointer" onclick="filterFails('${reason.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" title="Click to filter by this reason">${reason}: ${cnt}</span>`
+  ).join('');
+  const clearBtn = failSearchKeyword
+    ? `<button class="btn btn-sm" style="margin-left:auto" onclick="filterFails('')">✕ Clear filter</button>`
+    : '';
+  el.innerHTML = `<span class="summary-label">By type:</span>${badges}${clearBtn}`;
+}
+
+// ─── Pareto chart ─────────────────────────────────────────────────────────────
+function renderPareto(failsData) {
+  const container = document.getElementById('pareto-container');
+  const subtitle = document.getElementById('pareto-subtitle');
+  if (!container) return;
+  if (!failsData || failsData.length === 0) {
+    container.innerHTML = '<p style="color:var(--muted);font-size:12px;padding:6px 0">No failure data to analyse</p>';
+    if (subtitle) subtitle.textContent = '';
+    return;
+  }
+  const counts = {};
+  failsData.forEach(f => { counts[f.reason] = (counts[f.reason] || 0) + 1; });
+  const total = failsData.length;
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const maxCnt = sorted[0][1];
+  let cumCnt = 0;
+  const rows = sorted.map(([reason, cnt]) => {
+    cumCnt += cnt;
+    const pct = (cnt / total * 100).toFixed(1);
+    const cumPct = (cumCnt / total * 100).toFixed(1);
+    const barW = Math.round(cnt / maxCnt * 100);
+    const cumColor = Number(cumPct) <= 50 ? 'var(--red)' : Number(cumPct) <= 80 ? 'var(--amber)' : 'var(--muted)';
+    return `<tr>
+      <td style="min-width:180px;font-size:12px;padding:6px 10px">${reason}</td>
+      <td style="text-align:right;font-weight:700;color:var(--red);font-size:13px;padding:6px 10px">${cnt}</td>
+      <td style="text-align:right;color:var(--muted);font-size:11px;padding:6px 10px">${pct}%</td>
+      <td style="width:50%;padding:6px 10px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;height:8px;border-radius:4px;background:var(--surface2);overflow:hidden">
+            <div style="width:${barW}%;height:100%;border-radius:4px;background:var(--red);opacity:0.75"></div>
+          </div>
+          <span style="font-size:11px;min-width:46px;color:${cumColor};font-weight:500">${cumPct}% ▲</span>
+        </div>
+      </td>
+    </tr>`;
+  });
+  if (subtitle) subtitle.textContent = `${total} total failures`;
+  container.innerHTML = `
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="text-align:left;padding:5px 10px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:0.5px solid var(--border)">Fail reason</th>
+        <th style="text-align:right;padding:5px 10px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:0.5px solid var(--border)">Count</th>
+        <th style="text-align:right;padding:5px 10px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:0.5px solid var(--border)">%</th>
+        <th style="padding:5px 10px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:0.5px solid var(--border)">Distribution (cumulative %)</th>
+      </tr></thead>
+      <tbody>${rows.join('')}</tbody>
+    </table>`;
+}
+
+// ─── Fail search filter ────────────────────────────────────────────────────────
+function filterFails(q) {
+  failSearchKeyword = String(q || '');
+  const searchInput = document.getElementById('fail-search');
+  if (searchInput) searchInput.value = failSearchKeyword;
+  renderFails();
+}
+
+// ─── CSV Export ───────────────────────────────────────────────────────────────
+function downloadCsv(rows, headers, filename) {
+  if (!rows || rows.length === 0) { alert('No data to export.'); return; }
+  const csv = [
+    headers.join(','),
+    ...rows.map(r => headers.map(h => `"${String(r[h] ?? '').replace(/"/g, '""')}"`).join(','))
+  ].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportWoCsv() {
+  const sorted = applyWorkOrderFiltersAndSort(workOrders);
+  const rows = sorted.map(r => ({
+    work_order: r.wo,
+    product_model: r.model,
+    start_time: fmtDateTime(r.startTime),
+    end_time: fmtDateTime(r.endTime),
+    duration: formatWoDuration(r.startTime, r.endTime),
+    units: r.units,
+    yield_pct: r.yield,
+    avg_24g_mbps: r.avg24,
+    avg_5g_mbps: r.avg5g,
+    retry_rate_pct: r.retry,
+  }));
+  downloadCsv(rows,
+    ['work_order','product_model','start_time','end_time','duration','units','yield_pct','avg_24g_mbps','avg_5g_mbps','retry_rate_pct'],
+    `workorders_${new Date().toISOString().slice(0,10)}.csv`
+  );
+}
+
+function exportFailsCsv() {
+  const q = String(failSearchKeyword || '').trim().toLowerCase();
+  const data = q
+    ? fails.filter(f =>
+        String(f.sn||'').toLowerCase().includes(q) ||
+        String(f.wo||'').toLowerCase().includes(q) ||
+        String(f.reason||'').toLowerCase().includes(q)
+      )
+    : fails;
+  const rows = data.map(f => ({
+    time: f.time,
+    sn: f.sn,
+    work_order: f.wo,
+    fail_reason: f.reason,
+    avg_24g_mbps: f.g24 ?? '',
+    avg_5g_mbps: f.g5 ?? '',
+    rssi_before_5g_dBm: f.rssi_b ?? '',
+    rssi_after_5g_dBm: f.rssi_a ?? '',
+    rssi_delta_5g_dBm: f.rssi_delta ?? '',
+  }));
+  downloadCsv(rows,
+    ['time','sn','work_order','fail_reason','avg_24g_mbps','avg_5g_mbps','rssi_before_5g_dBm','rssi_after_5g_dBm','rssi_delta_5g_dBm'],
+    `fail_list_${new Date().toISOString().slice(0,10)}.csv`
+  );
 }
 </script>
 </body>
