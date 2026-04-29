@@ -1428,3 +1428,100 @@ def backfill_metadata(dry_run: bool = True) -> dict[str, Any]:
         "updated": updated,
         "rule": "generic parent folder product_model -> use work_order as product_model; clear work_order",
     }
+
+
+import urllib.request
+import json
+
+LLM_API_BASE = "http://10.20.30.23:8000/v1"
+LLM_API_KEY = "tn8227"
+LLM_MODEL = "Gemma-4-26B-A4B"
+
+@app.get("/api/llm-status")
+def llm_status():
+    try:
+        req = urllib.request.Request(f"{LLM_API_BASE}/models", headers={"Authorization": f"Bearer {LLM_API_KEY}"})
+        with urllib.request.urlopen(req, timeout=3) as response:
+            if response.status == 200:
+                return {"status": "ok", "connected": True}
+    except Exception as e:
+        print(f"LLM status check failed: {e}")
+    return {"status": "error", "connected": False}
+
+@app.get("/api/workorders/{wo}/ai-summary")
+def ai_summary(wo: str, product_model: Optional[str] = None):
+    where = "WHERE work_order = %s"
+    params = [wo]
+    if product_model and product_model != "ALL":
+        where += " AND product_model = %s"
+        params.append(product_model)
+    
+    sql_stats = LATEST_SN_CTE + f'''
+    SELECT
+      COUNT(*) AS total,
+      COUNT(*) FILTER (WHERE result = TRUE) AS passed,
+      COUNT(*) FILTER (WHERE result = FALSE) AS failed,
+      ROUND(COALESCE(COUNT(*) FILTER (WHERE result = TRUE) * 100.0 / NULLIF(COUNT(*), 0), 0), 2) AS yield_pct,
+      ROUND(COALESCE(AVG(avg_24g), 0)::numeric, 2) AS avg_24g,
+      ROUND(COALESCE(AVG(avg_5g), 0)::numeric, 2) AS avg_5g
+    FROM latest {where}
+    '''
+    rows_stats = query_all(sql_stats, tuple(params))
+    if not rows_stats or rows_stats[0]['total'] == 0:
+        raise HTTPException(status_code=404, detail="Work order not found or has no data")
+    
+    stats = rows_stats[0]
+    
+    sql_fails = LATEST_SN_CTE + f'''
+    SELECT
+      CASE
+        WHEN COALESCE(band_result_5g, TRUE) = FALSE THEN '5G check failed'
+        WHEN COALESCE(band_result_24g, TRUE) = FALSE THEN '2.4G check failed'
+        WHEN COALESCE(bt_result, TRUE) = FALSE THEN 'BT ping failed'
+        WHEN avg_5g IS NULL THEN 'Missing 5G throughput'
+        WHEN avg_24g IS NULL THEN 'Missing 2.4G throughput'
+        ELSE 'Final test failed'
+      END AS fail_reason,
+      COUNT(*) as count
+    FROM latest {where} AND result = FALSE
+    GROUP BY fail_reason
+    ORDER BY count DESC
+    LIMIT 3
+    '''
+    rows_fails = query_all(sql_fails, tuple(params))
+    fails_text = ", ".join([f"{r['fail_reason']}({r['count']} units)" for r in rows_fails]) if rows_fails else "無特定異常(或全數Pass)"
+
+    prompt = f'''請以繁體中文且專業的測試工程師口吻，為工單 {wo} 產出一份簡短的測試總結報告。
+工單數據如下：
+- 總測試數: {stats['total']}
+- Pass: {stats['passed']}
+- Fail: {stats['failed']}
+- 良率: {stats['yield_pct']}%
+- 2.4G 平均吞吐量: {stats['avg_24g']} Mbps
+- 5G 平均吞吐量: {stats['avg_5g']} Mbps
+- 主要失敗原因: {fails_text}
+
+請重點分析良率是否達標(一般大於95%為佳)，以及針對失敗原因給予簡短的後續追蹤建議。請使用 Markdown 格式，適度使用列表與重點標示。不要輸出JSON。'''
+
+    data = {
+        "model": LLM_MODEL,
+        "messages": [
+            {"role": "system", "content": "你是一個專業的製造測試工程師與數據分析專家。"},
+            {"role": "user", "content": prompt}
+        ]
+    }
+    
+    try:
+        req = urllib.request.Request(
+            f"{LLM_API_BASE}/chat/completions",
+            data=json.dumps(data).encode("utf-8"),
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {LLM_API_KEY}"}
+        )
+        with urllib.request.urlopen(req, timeout=90) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            content = res_data["choices"][0]["message"]["content"]
+            return {"summary": content}
+    except Exception as e:
+        print(f"LLM summary failed: {e}")
+        raise HTTPException(status_code=500, detail=f"LLM request failed: {e}")
+
