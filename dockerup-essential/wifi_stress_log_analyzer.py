@@ -16,7 +16,7 @@ try:
 except ImportError:
     DB_UPLOAD_AVAILABLE = False
 
-APP_VERSION = "2026.03.20"
+APP_VERSION = "2026.03.26"
 DB_DUPLICATE_POLICY = "skip"
 DB_DSN_TEMPLATE = "postgresql://qc:qcpass@{host}/wifitest"
 DB_CONNECT_TIMEOUT_SECONDS = 3

@@ -7,7 +7,7 @@ from urllib.parse import quote, urlparse
 import psycopg2
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 import log_parser
@@ -266,8 +266,9 @@ def _resolve_downloadable_log_path(source_file: str) -> Path:
     candidates.append(Path.cwd() / original)
     candidates.append(repo_root / original)
 
-  name_only = Path(raw).name
-  if name_only and name_only != raw:
+  normalized_raw = raw.replace('\\', '/')
+  name_only = Path(normalized_raw).name
+  if name_only and name_only != raw and name_only != normalized_raw:
     candidates.extend([
       Path('/app') / raw,
       Path('/app/logs') / raw,
@@ -1237,7 +1238,7 @@ def db_tweak_delete_workorder(req: DbDeleteWorkOrderRequest) -> dict[str, Any]:
 @app.post('/api/db-tweak/download-record-log')
 def db_tweak_download_record_log(req: DbDownloadRecordLogRequest):
     rows = query_all_user(
-        'SELECT source_file FROM test_record WHERE id = %s LIMIT 1',
+        'SELECT source_file, raw_log FROM test_record WHERE id = %s LIMIT 1',
         (req.id,),
         req.username,
         req.password,
@@ -1246,15 +1247,33 @@ def db_tweak_download_record_log(req: DbDownloadRecordLogRequest):
         raise HTTPException(status_code=404, detail=f'Record not found: id={req.id}')
 
     source_file = rows[0].get('source_file')
-    if not source_file:
-        raise HTTPException(status_code=404, detail='No source file for this record')
+    raw_log = rows[0].get('raw_log')
 
-    file_path = _resolve_downloadable_log_path(str(source_file))
-    return FileResponse(
-        path=str(file_path),
-        filename=file_path.name,
-        media_type='application/octet-stream',
-    )
+    if not source_file and not raw_log:
+        raise HTTPException(status_code=404, detail='No log data for this record')
+
+    filename = str(source_file) if source_file else f"log_{req.id}.txt"
+    filename = Path(filename.replace('\\', '/')).name
+
+    if source_file:
+        try:
+            file_path = _resolve_downloadable_log_path(str(source_file))
+            return FileResponse(
+                path=str(file_path),
+                filename=file_path.name,
+                media_type='application/octet-stream',
+            )
+        except HTTPException:
+            pass
+            
+    if raw_log:
+        return Response(
+            content=raw_log,
+            media_type='application/octet-stream',
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+        )
+        
+    raise HTTPException(status_code=404, detail=f'Log file not found on disk and database raw_log is empty for source: {source_file}')
 
 
 @app.post("/api/ingest")
