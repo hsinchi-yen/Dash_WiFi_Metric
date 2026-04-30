@@ -1975,6 +1975,11 @@
         <div class="topbar">
           <h2>Advanced Test Analysis</h2>
           <div class="topbar-right">
+            <button id="adv-ai-report-btn" class="ai-btn"
+              onclick="openLatestWoTerminalReport()"
+              title="Generate terminal AI report for the latest work order">
+              ⬛ AI Report — Latest WO
+            </button>
             <span class="badge badge-purple" style="font-size:11px;">Analyzed from loaded Work Orders</span>
           </div>
         </div>
@@ -2435,6 +2440,9 @@
          const searchInput = document.querySelector('#page-workorders input[type=text]');
          if(searchInput) filterTable(searchInput.value);
       }
+      // Sync Advanced Analysis AI Report button with LLM state
+      const advBtn = document.getElementById('adv-ai-report-btn');
+      if (advBtn && !advBtn.disabled) advBtn.disabled = !window.llmConnected;
     }
 
     setInterval(checkLlmStatus, 30000);
@@ -2618,6 +2626,42 @@
       document.getElementById('terminal-modal').classList.remove('show');
       const cb = _termOnDone; _termOnDone = null;
       if (cb) cb();
+      // Restore Advanced Analysis AI button state
+      const advBtn = document.getElementById('adv-ai-report-btn');
+      if (advBtn) { advBtn.disabled = false; advBtn.textContent = '⬛ AI Report — Latest WO'; }
+    }
+
+    async function openLatestWoTerminalReport() {
+      if (!window.llmConnected) return;
+
+      // Find latest work order (newest startTime first)
+      const latest = Array.isArray(workOrders) && workOrders.length > 0
+        ? workOrders.slice().sort((a, b) => {
+            const ts = s => s ? new Date(s).getTime() : 0;
+            return ts(b.startTime) - ts(a.startTime);
+          })[0]
+        : null;
+      if (!latest) { alert('No work order data loaded.'); return; }
+
+      const btn = document.getElementById('adv-ai-report-btn');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Fetching...'; }
+
+      try {
+        const url = `${API_BASE}/api/workorders/${encodeURIComponent(latest.wo)}/ai-summary`
+          + `?product_model=${encodeURIComponent(latest.model || '')}&lang=en&mode=carousel`;
+        const res  = await fetch(url);
+        const data = await res.json();
+        if (!res.ok || !data.summary) {
+          alert(`AI report failed: ${data.detail || 'Unknown error'}`);
+          if (btn) { btn.disabled = false; btn.textContent = '⬛ AI Report — Latest WO'; }
+          return;
+        }
+        // btn state restored in closeTerminalReport
+        openTerminalReport(latest.wo, latest.model, latest.yield, data.summary, null);
+      } catch(e) {
+        alert(`Request failed: ${e.message}`);
+        if (btn) { btn.disabled = false; btn.textContent = '⬛ AI Report — Latest WO'; }
+      }
     }
 
     async function showCarouselAiReport(onDone) {
