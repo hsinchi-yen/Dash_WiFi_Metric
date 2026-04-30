@@ -2493,8 +2493,12 @@
           segments.push({ type: 'blank', text: '' });
           continue;
         }
-        // Strip leading markdown bold markers (**) for cleaner display
-        const clean = line.replace(/^\*{1,2}|\*{1,2}$/g, '').trimStart();
+        // Strip markdown bold/italic/heading markers (**, *, #) from start and end
+        const clean = line
+          .replace(/^#+\s*/, '')          // leading # headings
+          .replace(/^\*{1,3}|\*{1,3}$/g, '') // leading/trailing bold/italic
+          .replace(/^_{1,2}|_{1,2}$/g, '')   // leading/trailing underscores
+          .trim();
         // Main report title (e.g. "WiFi Test Summary Report")
         if (/^WiFi\s+Test\s+Summary\s+Report/i.test(clean)) {
           segments.push({ type: 'report-title', text: clean });
@@ -2505,7 +2509,8 @@
           segments.push({ type: 'section-header', text: clean });
           continue;
         }
-        segments.push({ type: 'content', text: line });
+        // Use cleaned text for content too (removes stray markdown)
+        segments.push({ type: 'content', text: clean || line });
       }
       return segments;
     }

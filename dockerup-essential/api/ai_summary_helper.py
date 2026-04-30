@@ -27,29 +27,42 @@ def build_summary_messages(
     alert_zh, alert_en = _alert_labels(yield_pct)
 
     if mode == "carousel":
-        # Concise plain-text English for terminal typewriter display.
-        # No markdown, no bullets, no headers — clean prose under ~180 words.
+        # Structured English report for terminal typewriter display.
+        # Must follow the exact section-header format so parseTerminalSegments()
+        # can classify lines into report-title / section-header / content.
         fails_display = fails_text if fails_text else "No specific failures (all passed)"
         system_msg = (
-            "You are a manufacturing test engineer. "
-            "Respond in plain English only. No markdown, no bullet points, no headers. "
-            "Write clean, continuous prose. Maximum 180 words. "
+            "You are a professional manufacturing test engineer. "
+            "Respond in English only. Do NOT use markdown symbols (no **, no #, no -). "
+            "Use plain text with the exact numbered-section structure shown in the template. "
             "注意：请完全使用英文回复，不要使用中文字符，不要使用markdown符号。"
         )
         prompt = (
-            f"[IMPORTANT] 注意：请用纯英文回复，不使用markdown，不超过180个英文单词。\n\n"
-            f"Write a concise terminal-style quality report for work order {wo}.\n\n"
-            f"Data:\n"
-            f"  Work Order : {wo}\n"
-            f"  Total      : {stats['total']} units\n"
-            f"  Pass       : {stats['passed']}  Fail: {stats['failed']}\n"
-            f"  Yield      : {yield_pct}%  (Alert: {alert_en})\n"
-            f"  2.4G Avg   : {stats['avg_24g']} Mbps\n"
-            f"  5G Avg     : {stats['avg_5g']} Mbps\n"
-            f"  Failures   : {fails_display}\n\n"
-            f"Write 2-3 short paragraphs: (1) yield status and alert level meaning, "
-            f"(2) failure analysis, (3) one concrete recommendation. "
-            f"Plain text only. No markdown. ENGLISH ONLY. 请用英文回复。"
+            f"[IMPORTANT] 注意：请完全用英文回复，不使用markdown符号，严格按照模板格式输出。\n\n"
+            f"Generate a WiFi test quality report for work order {wo}.\n"
+            f"You MUST follow this EXACT template structure (plain text, no markdown):\n\n"
+            f"WiFi Test Summary Report\n\n"
+            f"1. General Information\n"
+            f"Work Order: {wo}\n"
+            f"Report Status: Completed\n"
+            f"Test Type: WiFi RF Performance & Throughput Test\n\n"
+            f"2. Test Statistics\n"
+            f"Total Units Tested: {stats['total']}\n"
+            f"Total Passed: {stats['passed']}\n"
+            f"Total Failed: {stats['failed']}\n"
+            f"Yield Rate: {yield_pct}%\n"
+            f"Alert Level: {alert_en} (Threshold: >=99.2% Normal, 98.5-99.19% Warning, <98.5% Alarm)\n\n"
+            f"3. RF Performance Metrics\n"
+            f"Average 2.4G Throughput: {stats['avg_24g']} Mbps\n"
+            f"Average 5G Throughput: {stats['avg_5g']} Mbps\n\n"
+            f"4. Yield Analysis\n"
+            f"[Write 2 sentences: assess yield vs alert threshold, production status.]\n\n"
+            f"5. Failure Analysis & Recommendations\n"
+            f"Failure Root Cause: {fails_display}\n"
+            f"[Write 2-3 sentences of follow-up recommendations based on the failure data.]\n\n"
+            f"Fill in the bracketed placeholders with your analysis. "
+            f"Keep section headers exactly as shown (e.g. '1. General Information'). "
+            f"ENGLISH ONLY. No markdown. 请用英文回复。"
         )
         return [
             {"role": "system", "content": system_msg},

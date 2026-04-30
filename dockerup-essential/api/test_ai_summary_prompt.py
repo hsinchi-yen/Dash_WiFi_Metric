@@ -134,11 +134,21 @@ def test_carousel_prompt_has_no_markdown_symbols():
         "carousel prompt must NOT request markdown format"
 
 
-def test_carousel_prompt_limits_word_count():
+def test_carousel_prompt_has_required_section_headers():
+    """Carousel prompt must embed the exact section-header template so the LLM
+    outputs numbered sections that parseTerminalSegments() can classify."""
     messages = build_summary_messages(SAMPLE_STATS, SAMPLE_FAILS, WO, "en", mode="carousel")
     prompt = messages[1]["content"]
-    assert "180" in prompt or "200" in prompt, \
-        "carousel prompt must specify a word/character limit for concise terminal display"
+    for header in [
+        "WiFi Test Summary Report",
+        "1. General Information",
+        "2. Test Statistics",
+        "3. RF Performance Metrics",
+        "4. Yield Analysis",
+        "5. Failure Analysis",
+    ]:
+        assert header in prompt, \
+            f"carousel prompt must contain section header '{header}' for terminal formatting"
 
 
 def test_carousel_alert_level_in_prompt():
