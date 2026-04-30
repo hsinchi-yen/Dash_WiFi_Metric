@@ -1436,7 +1436,7 @@ import json
 
 LLM_API_BASE = "http://10.20.30.23:8000/v1"
 LLM_API_KEY = "tn8227"
-LLM_MODEL = "Gemma-4-26B-A4B"
+LLM_MODEL = "Qwen3.6-35B-A3B-Q6_K"
 
 @app.get("/api/llm-status")
 def llm_status():

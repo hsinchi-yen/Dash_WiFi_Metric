@@ -2566,16 +2566,13 @@
            if (lastIndex < textToParse.length) {
               segments.push({ type: 'content', text: textToParse.substring(lastIndex) });
            }
+           // content lines need an explicit <br> — block-level types (title/header) handle their own break
+           segments.push({ type: 'newline', text: '' });
         } else {
            // For title and header, just push the whole line (remove any raw tags if LLM messed up)
            clean = clean.replace(/<\/?(num|ok|err|warn)>/g, '');
            segments.push({ type: baseType, text: clean });
         }
-        
-        // Add a newline segment after each line (except the last one if we don't want an extra blank)
-        // But the previous logic added block elements for each line. 
-        // Since we are now using inline spans for multiple segments per line, we MUST add a newline segment.
-        segments.push({ type: 'newline', text: '' });
       }
       return segments;
     }
@@ -2704,17 +2701,15 @@
         while (segIdx < segments.length) {
           const seg = segments[segIdx];
           if (seg.type === 'blank') {
-            const br = document.createElement('div');
-            br.className = 'term-content'; br.innerHTML = '&nbsp;';
-            contentEl.appendChild(br);
+            const bl = document.createElement('div');
+            bl.style.cssText = 'display:block;height:1.85em;';
+            contentEl.appendChild(bl);
             segIdx++; charIdx = 0; currentSpan = null;
             body.scrollTop = 99999;
             return;
           }
           if (seg.type === 'newline') {
-            const br = document.createElement('div');
-            br.className = 'term-content';
-            contentEl.appendChild(br);
+            contentEl.appendChild(document.createElement('br'));
             segIdx++; charIdx = 0; currentSpan = null;
             body.scrollTop = 99999;
             return;

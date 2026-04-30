@@ -40,6 +40,14 @@ services:
       timeout: 5s
       retries: 10
 
+  grafana-init:
+    image: alpine:latest
+    user: root
+    volumes:
+      - ${STORAGE_PATH:-/mnt/md127/WIFI_YFP_DashBoard}/docker-data/grafana-data:/var/lib/grafana
+    command: sh -c "chown -R 472:472 /var/lib/grafana && chmod 755 /var/lib/grafana"
+    restart: "no"
+
   grafana:
     image: grafana/grafana:11.0.0
     container_name: wifitest-grafana
@@ -55,6 +63,8 @@ services:
     ports:
       - "3000:3000"
     depends_on:
+      grafana-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
 
