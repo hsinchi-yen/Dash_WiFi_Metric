@@ -1688,6 +1688,10 @@
           <div class="nav-item" onclick="showPage('dbtweak',this)">
             <span style="margin-right:6px; font-size:16px;">🔧</span> Database Tweak
           </div>
+          <div class="nav-item" id="nav-ai-report" onclick="openLatestWoTerminalReport()"
+            title="Generate terminal AI report for the latest work order">
+            <span style="margin-right:6px; font-size:16px;">⬛</span> AI Report — Latest WO
+          </div>
         </div>
       </nav>
       <div class="sidebar-footer">
@@ -1975,11 +1979,6 @@
         <div class="topbar">
           <h2>Advanced Test Analysis</h2>
           <div class="topbar-right">
-            <button id="adv-ai-report-btn" class="ai-btn"
-              onclick="openLatestWoTerminalReport()"
-              title="Generate terminal AI report for the latest work order">
-              ⬛ AI Report — Latest WO
-            </button>
             <span class="badge badge-purple" style="font-size:11px;">Analyzed from loaded Work Orders</span>
           </div>
         </div>
@@ -2440,9 +2439,6 @@
          const searchInput = document.querySelector('#page-workorders input[type=text]');
          if(searchInput) filterTable(searchInput.value);
       }
-      // Sync Advanced Analysis AI Report button with LLM state
-      const advBtn = document.getElementById('adv-ai-report-btn');
-      if (advBtn && !advBtn.disabled) advBtn.disabled = !window.llmConnected;
     }
 
     setInterval(checkLlmStatus, 30000);
@@ -2453,15 +2449,27 @@
 
     // ── Terminal AI Report (carousel mode) ──────────────────────────────────
 
-    let _termTimer      = null;  // typewriter interval
-    let _termPause      = null;  // 30s pause timeout
-    let _termCountdown  = null;  // countdown interval
-    let _termOnDone     = null;  // callback after modal closes
-    let _termSkipBound  = null;  // bound skip handler for cleanup
+    let _termTimer           = null;  // typewriter interval
+    let _termPause           = null;  // auto-close timeout
+    let _termCountdown       = null;  // countdown interval
+    let _termOnDone          = null;  // callback after modal closes
+    let _termSkipBound       = null;  // bound skip handler for cleanup
+    let _termLoadingInterval = null;  // loading dots animation interval
 
     // Pre-fetched AI summary for carousel use
     let carouselAiCache    = null;  // { summary, wo, model, yieldPct }
     let carouselAiFetching = false;
+
+    // fetch with AbortController timeout (default 180s — backend LLM timeout is 180s)
+    async function fetchWithTimeout(url, timeoutMs = 180000) {
+      const ctrl  = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      try {
+        return await fetch(url, { signal: ctrl.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    }
 
     async function prefetchCarouselAiReport() {
       if (!window.llmConnected) return;
@@ -2479,13 +2487,13 @@
       try {
         const url = `${API_BASE}/api/workorders/${encodeURIComponent(latest.wo)}/ai-summary`
           + `?product_model=${encodeURIComponent(latest.model || '')}&lang=en&mode=carousel`;
-        const res  = await fetch(url);
+        const res  = await fetchWithTimeout(url);
         const data = await res.json();
         if (res.ok && data.summary) {
           carouselAiCache = { summary: data.summary, wo: latest.wo, model: latest.model, yieldPct: latest.yield };
         }
       } catch(e) {
-        console.warn('AI carousel prefetch failed:', e);
+        console.warn('AI carousel prefetch failed:', e.name === 'AbortError' ? 'timeout (180s)' : e.message);
       } finally {
         carouselAiFetching = false;
       }
@@ -2501,95 +2509,158 @@
           segments.push({ type: 'blank', text: '' });
           continue;
         }
-        // Strip markdown bold/italic/heading markers (**, *, #) from start and end
+        // Detect list markers before stripping — list items are always content
+        const isList = /^\s*[-*]\s+/.test(line);
         const clean = line
-          .replace(/^#+\s*/, '')          // leading # headings
-          .replace(/^\*{1,3}|\*{1,3}$/g, '') // leading/trailing bold/italic
-          .replace(/^_{1,2}|_{1,2}$/g, '')   // leading/trailing underscores
+          .replace(/^#+\s*/, '')                      // strip leading # headings
+          .replace(/\*{1,3}([^*\n]+)\*{1,3}/g, '$1') // strip inline **bold** / *italic*
+          .replace(/_{1,2}([^_\n]+)_{1,2}/g, '$1')   // strip inline __underline__
+          .replace(/^\s*[-*]\s+/, '')                 // strip leading list markers (- or *)
           .trim();
-        // Main report title (e.g. "WiFi Test Summary Report")
-        if (/^WiFi\s+Test\s+Summary\s+Report/i.test(clean)) {
+        if (!isList && /^WiFi\s+Test\s+Summary\s+Report/i.test(clean)) {
           segments.push({ type: 'report-title', text: clean });
           continue;
         }
-        // Numbered section header (e.g. "1. General Information")
-        if (/^\d+\.\s+\S/.test(clean)) {
+        if (!isList && /^\d+\.\s+\S/.test(clean)) {
           segments.push({ type: 'section-header', text: clean });
           continue;
         }
-        // Use cleaned text for content too (removes stray markdown)
         segments.push({ type: 'content', text: clean || line });
       }
       return segments;
     }
 
-    function openTerminalReport(wo, model, yieldPct, summary, onDone) {
-      // ── Titlebar ──
-      document.getElementById('term-wo-label').textContent     = `WO: ${wo}`;
+    // ── Shared titlebar setup ────────────────────────────────────────────────
+    function _setupTerminalTitlebar(wo, model, yieldPct) {
+      document.getElementById('term-wo-label').textContent      = `WO: ${wo}`;
       document.getElementById('term-product-label').textContent = `PRODUCT: ${model || '—'}`;
       const alertEl = document.getElementById('term-alert-label');
       const alertLv = yieldPct >= 99.2 ? 'NORMAL' : yieldPct >= 98.5 ? 'WARNING' : 'ALARM';
       alertEl.textContent = alertLv;
       alertEl.className   = alertLv === 'NORMAL' ? 'term-alert-normal'
                           : alertLv === 'WARNING' ? 'term-alert-warning' : 'term-alert-alarm';
+    }
 
-      // ── Reset body ──
+    // ── Phase 1: open terminal with AI PROCESSING animation ────────────────
+    // Call this immediately (before the fetch).  Clicking closes the window.
+    function openTerminalWithLoading(wo, model, yieldPct) {
+      closeTerminalReport(true); // clear any running terminal first
+      _setupTerminalTitlebar(wo, model, yieldPct);
+
+      const contentEl = document.getElementById('term-content');
+      const statusEl  = document.getElementById('term-status');
+      const countEl   = document.getElementById('term-countdown');
+      const cursorEl  = document.getElementById('term-cursor');
+
+      contentEl.innerHTML  = '';
+      cursorEl.className   = 'term-cursor';
+      statusEl.textContent = '⏳ AI PROCESSING...';
+      countEl.textContent  = '';
+
+      // Centered loading panel
+      const loadDiv = document.createElement('div');
+      loadDiv.id    = 'term-loading-ui';
+      loadDiv.style.cssText =
+        'display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+        'min-height:460px;text-align:center;padding:40px 0;';
+      const bar = '━'.repeat(46);
+      loadDiv.innerHTML = `
+        <div style="color:#3a3a00;font-size:13px;letter-spacing:1px;">${bar}</div>
+        <div style="color:#FFFFFF;font-weight:700;font-size:22px;letter-spacing:4px;margin:32px 0 6px;">AI PROCESSING</div>
+        <div id="term-loading-dots" style="color:#FFD700;font-size:22px;letter-spacing:6px;min-width:80px;text-align:center;margin-bottom:36px;">.</div>
+        <div style="font-size:13px;line-height:2.5;color:#888800;">
+          Work Order : <span style="color:#FFD700;">${wo}</span><br>
+          ${model && model !== 'ALL' ? `Product    : <span style="color:#FFD700;">${model}</span><br>` : ''}
+          Status     : <span style="color:#aaa800;">Querying local LLM &mdash; please wait&hellip;</span>
+        </div>
+        <div style="color:#3a3a00;font-size:13px;letter-spacing:1px;margin-top:36px;">${bar}</div>
+      `;
+      contentEl.appendChild(loadDiv);
+
+      document.getElementById('terminal-modal').classList.add('show');
+      document.getElementById('term-body').scrollTop = 0;
+
+      // Animate dots: .  →  ..  →  ...  →  .
+      let dc = 1;
+      _termLoadingInterval = setInterval(() => {
+        const el = document.getElementById('term-loading-dots');
+        if (el) { dc = dc % 3 + 1; el.textContent = '. '.repeat(dc).trimEnd(); }
+      }, 500);
+
+      // Allow click / any key to close during loading phase
+      _termOnDone    = null;
+      _termSkipBound = () => closeTerminalReport(true);
+      document.getElementById('terminal-modal').addEventListener('click', _termSkipBound, { once: true });
+      document.addEventListener('keydown', _termSkipBound, { once: true });
+    }
+
+    // ── Phase 2: clear loading and start typewriter ──────────────────────────
+    // Call after fetch completes. If the terminal was closed during loading, does nothing.
+    function startTerminalContent(summary, onDone) {
+      if (!document.getElementById('terminal-modal').classList.contains('show')) return;
+
+      // Clear loading animation
+      if (_termLoadingInterval) { clearInterval(_termLoadingInterval); _termLoadingInterval = null; }
+      const loadUI = document.getElementById('term-loading-ui');
+      if (loadUI) loadUI.remove();
+
+      // Remove loading-phase skip listener
+      if (_termSkipBound) {
+        document.getElementById('terminal-modal').removeEventListener('click', _termSkipBound);
+        document.removeEventListener('keydown', _termSkipBound);
+        _termSkipBound = null;
+      }
+
       const contentEl = document.getElementById('term-content');
       const cursorEl  = document.getElementById('term-cursor');
       const statusEl  = document.getElementById('term-status');
       const countEl   = document.getElementById('term-countdown');
+      const body      = document.getElementById('term-body');
+
       contentEl.innerHTML  = '';
       cursorEl.className   = 'term-cursor';
       statusEl.textContent = '● TYPING...';
       countEl.textContent  = '';
+      body.scrollTop       = 0;
 
-      _termOnDone = onDone;
-      document.getElementById('terminal-modal').classList.add('show');
-      document.getElementById('term-body').scrollTop = 0;
-
-      // ── Skip on click or keydown ──
+      _termOnDone    = onDone;
       _termSkipBound = () => closeTerminalReport(true);
       document.getElementById('terminal-modal').addEventListener('click', _termSkipBound, { once: true });
       document.addEventListener('keydown', _termSkipBound, { once: true });
 
-      // ── Segment-based typewriter (0.02s per character) ──
       const segments = parseTerminalSegments(summary);
       let segIdx = 0, charIdx = 0, currentSpan = null;
-
-      const body = document.getElementById('term-body');
 
       function typewriterDone() {
         clearInterval(_termTimer); _termTimer = null;
         cursorEl.className   = 'term-cursor done';
         statusEl.textContent = '✔ REPORT COMPLETE';
-        // 60-second countdown
-        let remaining = 60;
-        countEl.textContent = `Auto-close in ${remaining}s`;
+        let remaining = 30;
+        countEl.textContent = `Auto-close in ${remaining}s  (click or any key to close now)`;
         _termCountdown = setInterval(() => {
           remaining--;
-          countEl.textContent = remaining > 0 ? `Auto-close in ${remaining}s` : '';
-          if (remaining <= 0) { clearInterval(_termCountdown); _termCountdown = null; }
+          if (remaining > 0) {
+            countEl.textContent = `Auto-close in ${remaining}s  (click or any key to close now)`;
+          } else {
+            countEl.textContent = '';
+            clearInterval(_termCountdown); _termCountdown = null;
+          }
         }, 1000);
-        _termPause = setTimeout(() => closeTerminalReport(false), 60000);
+        _termPause = setTimeout(() => closeTerminalReport(false), 30000);
       }
 
+      if (_termTimer) { clearInterval(_termTimer); _termTimer = null; }
       _termTimer = setInterval(() => {
-        // Advance through segments
         while (segIdx < segments.length) {
           const seg = segments[segIdx];
-
           if (seg.type === 'blank') {
-            // Insert a blank line element and move on
             const br = document.createElement('div');
-            br.className = 'term-content';
-            br.innerHTML = '&nbsp;';
+            br.className = 'term-content'; br.innerHTML = '&nbsp;';
             contentEl.appendChild(br);
             segIdx++; charIdx = 0; currentSpan = null;
             body.scrollTop = 99999;
-            return; // one step per tick
+            return;
           }
-
-          // Create span for this segment if starting fresh
           if (charIdx === 0) {
             currentSpan = document.createElement('span');
             currentSpan.className =
@@ -2597,27 +2668,31 @@
               seg.type === 'section-header' ? 'term-section-header' : 'term-content';
             contentEl.appendChild(currentSpan);
           }
-
           if (charIdx < seg.text.length) {
             currentSpan.textContent += seg.text[charIdx++];
             body.scrollTop = 99999;
-            return; // one char per tick
+            return;
           }
-
-          // Segment done — move to next
           segIdx++; charIdx = 0; currentSpan = null;
         }
-
-        // All segments typed
         typewriterDone();
       }, 20);
     }
 
+    // ── Carousel shortcut: data already available, skip loading phase ────────
+    function openTerminalReport(wo, model, yieldPct, summary, onDone) {
+      closeTerminalReport(true);
+      _setupTerminalTitlebar(wo, model, yieldPct);
+      document.getElementById('terminal-modal').classList.add('show');
+      document.getElementById('term-body').scrollTop = 0;
+      startTerminalContent(summary, onDone);
+    }
+
     function closeTerminalReport(skipped) {
-      if (_termTimer)     { clearInterval(_termTimer);   _termTimer    = null; }
-      if (_termPause)     { clearTimeout(_termPause);    _termPause    = null; }
-      if (_termCountdown) { clearInterval(_termCountdown); _termCountdown = null; }
-      // Remove skip listeners if they haven't fired yet
+      if (_termTimer)           { clearInterval(_termTimer);           _termTimer           = null; }
+      if (_termPause)           { clearTimeout(_termPause);            _termPause           = null; }
+      if (_termCountdown)       { clearInterval(_termCountdown);       _termCountdown       = null; }
+      if (_termLoadingInterval) { clearInterval(_termLoadingInterval); _termLoadingInterval = null; }
       if (_termSkipBound) {
         document.getElementById('terminal-modal').removeEventListener('click', _termSkipBound);
         document.removeEventListener('keydown', _termSkipBound);
@@ -2626,9 +2701,6 @@
       document.getElementById('terminal-modal').classList.remove('show');
       const cb = _termOnDone; _termOnDone = null;
       if (cb) cb();
-      // Restore Advanced Analysis AI button state
-      const advBtn = document.getElementById('adv-ai-report-btn');
-      if (advBtn) { advBtn.disabled = false; advBtn.textContent = '⬛ AI Report — Latest WO'; }
     }
 
     async function openLatestWoTerminalReport() {
@@ -2643,24 +2715,52 @@
         : null;
       if (!latest) { alert('No work order data loaded.'); return; }
 
-      const btn = document.getElementById('adv-ai-report-btn');
-      if (btn) { btn.disabled = true; btn.textContent = '⏳ Fetching...'; }
+      // Phase 1: open terminal immediately with loading animation
+      openTerminalWithLoading(latest.wo, latest.model || '—', latest.yield || 0);
+
+      const navItem = document.getElementById('nav-ai-report');
+      if (navItem) navItem.style.opacity = '0.5';
 
       try {
-        const url = `${API_BASE}/api/workorders/${encodeURIComponent(latest.wo)}/ai-summary`
-          + `?product_model=${encodeURIComponent(latest.model || '')}&lang=en&mode=carousel`;
-        const res  = await fetch(url);
-        const data = await res.json();
-        if (!res.ok || !data.summary) {
-          alert(`AI report failed: ${data.detail || 'Unknown error'}`);
-          if (btn) { btn.disabled = false; btn.textContent = '⬛ AI Report — Latest WO'; }
+        // Wait if there is a background prefetch in progress
+        if (carouselAiFetching) {
+          let waited = 0;
+          while (carouselAiFetching && waited < 180000) {
+            await new Promise(r => setTimeout(r, 500));
+            waited += 500;
+          }
+        }
+        
+        // Use cached result if available and matches the latest work order
+        if (carouselAiCache && carouselAiCache.wo === latest.wo) {
+          startTerminalContent(carouselAiCache.summary, null);
           return;
         }
-        // btn state restored in closeTerminalReport
-        openTerminalReport(latest.wo, latest.model, latest.yield, data.summary, null);
+
+        const url = `${API_BASE}/api/workorders/${encodeURIComponent(latest.wo)}/ai-summary`
+          + `?product_model=${encodeURIComponent(latest.model || '')}&lang=en&mode=carousel`;
+        const res  = await fetchWithTimeout(url, 180000);
+        const data = await res.json();
+        if (!res.ok || !data.summary) {
+          // Phase 2: show error in terminal (startTerminalContent checks if still open)
+          startTerminalContent(
+            `AI report request failed.\nReason: ${data.detail || 'Unknown error'}\n\nPlease retry when LLM is ready.`,
+            null
+          );
+          return;
+        }
+        // Phase 2: transition to typewriter
+        startTerminalContent(data.summary, null);
       } catch(e) {
-        alert(`Request failed: ${e.message}`);
-        if (btn) { btn.disabled = false; btn.textContent = '⬛ AI Report — Latest WO'; }
+        const reason = e.name === 'AbortError'
+          ? 'LLM did not respond within 180 seconds (timeout).'
+          : e.message;
+        startTerminalContent(
+          `AI report unavailable.\n${reason}\n\nPlease check LLM connection and retry.`,
+          null
+        );
+      } finally {
+        if (navItem) navItem.style.opacity = '';
       }
     }
 
@@ -2670,9 +2770,9 @@
         if (onDone) onDone();
         return;
       }
-      // Wait for background fetch to complete (max 120s)
+      // Wait for background fetch to complete (max 130s — prefetch timeout is 180s, carousel pages take 60s)
       let waited = 0;
-      while (carouselAiFetching && waited < 120000) {
+      while (carouselAiFetching && waited < 130000) {
         await new Promise(r => setTimeout(r, 500));
         waited += 500;
       }

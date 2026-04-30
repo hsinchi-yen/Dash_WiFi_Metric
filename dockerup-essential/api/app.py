@@ -1509,7 +1509,7 @@ def ai_summary(wo: str, product_model: Optional[str] = None, lang: str = "zh", m
             data=json.dumps(data).encode("utf-8"),
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {LLM_API_KEY}"}
         )
-        with urllib.request.urlopen(req, timeout=90) as response:
+        with urllib.request.urlopen(req, timeout=180) as response:
             res_data = json.loads(response.read().decode("utf-8"))
             content = res_data["choices"][0]["message"]["content"]
             return {"summary": content}
