@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 import log_parser
+from ai_summary_helper import build_summary_messages
 
 app = FastAPI(title="WiFi Dashboard API", version="0.1.0")
 
@@ -1449,13 +1450,13 @@ def llm_status():
     return {"status": "error", "connected": False}
 
 @app.get("/api/workorders/{wo}/ai-summary")
-def ai_summary(wo: str, product_model: Optional[str] = None):
+def ai_summary(wo: str, product_model: Optional[str] = None, lang: str = "zh", mode: str = "normal"):
     where = "WHERE work_order = %s"
     params = [wo]
     if product_model and product_model != "ALL":
         where += " AND product_model = %s"
         params.append(product_model)
-    
+
     sql_stats = LATEST_SN_CTE + f'''
     SELECT
       COUNT(*) AS total,
@@ -1469,9 +1470,10 @@ def ai_summary(wo: str, product_model: Optional[str] = None):
     rows_stats = query_all(sql_stats, tuple(params))
     if not rows_stats or rows_stats[0]['total'] == 0:
         raise HTTPException(status_code=404, detail="Work order not found or has no data")
-    
+
     stats = rows_stats[0]
-    
+    yield_pct = float(stats['yield_pct'])
+
     sql_fails = LATEST_SN_CTE + f'''
     SELECT
       CASE
@@ -1489,28 +1491,18 @@ def ai_summary(wo: str, product_model: Optional[str] = None):
     LIMIT 3
     '''
     rows_fails = query_all(sql_fails, tuple(params))
-    fails_text = ", ".join([f"{r['fail_reason']}({r['count']} units)" for r in rows_fails]) if rows_fails else "無特定異常(或全數Pass)"
 
-    prompt = f'''請以繁體中文且專業的測試工程師口吻，為工單 {wo} 產出一份簡短的測試總結報告。
-工單數據如下：
-- 總測試數: {stats['total']}
-- Pass: {stats['passed']}
-- Fail: {stats['failed']}
-- 良率: {stats['yield_pct']}%
-- 2.4G 平均吞吐量: {stats['avg_24g']} Mbps
-- 5G 平均吞吐量: {stats['avg_5g']} Mbps
-- 主要失敗原因: {fails_text}
+    if lang == "en":
+        fails_text = ", ".join([f"{r['fail_reason']}({r['count']} units)" for r in rows_fails]) if rows_fails else "No specific failures (all passed)"
+    else:
+        fails_text = ", ".join([f"{r['fail_reason']}({r['count']} units)" for r in rows_fails]) if rows_fails else "無特定異常(或全數Pass)"
 
-請重點分析良率是否達標(一般大於95%為佳)，以及針對失敗原因給予簡短的後續追蹤建議。請使用 Markdown 格式，適度使用列表與重點標示。不要輸出JSON。'''
-
+    messages = build_summary_messages(stats, fails_text, wo, lang, mode)
     data = {
         "model": LLM_MODEL,
-        "messages": [
-            {"role": "system", "content": "你是一個專業的製造測試工程師與數據分析專家。"},
-            {"role": "user", "content": prompt}
-        ]
+        "messages": messages,
     }
-    
+
     try:
         req = urllib.request.Request(
             f"{LLM_API_BASE}/chat/completions",

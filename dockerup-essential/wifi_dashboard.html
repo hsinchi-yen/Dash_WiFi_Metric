@@ -1508,13 +1508,14 @@
       line-height: 1.6;
     }
     .ai-btn {
-      padding: 3px 6px;
+      padding: 3px 7px;
       border-radius: 4px;
       background: var(--blue-bg);
       color: var(--blue);
       border: 1px solid var(--blue);
       cursor: pointer;
       font-size: 11px;
+      font-weight: 600;
       transition: all 0.2s;
     }
     .ai-btn:hover {
@@ -1527,6 +1528,88 @@
       border-color: var(--border);
       cursor: not-allowed;
     }
+    .ai-btn-en {
+      background: var(--green-bg, rgba(59,109,17,0.15));
+      color: var(--green, #5aad2e);
+      border-color: var(--green, #5aad2e);
+    }
+    .ai-btn-en:hover {
+      background: var(--green, #5aad2e);
+      color: #000;
+    }
+    .ai-btn-en:disabled {
+      background: var(--surface2);
+      color: var(--muted);
+      border-color: var(--border);
+    }
+
+    /* ─── Terminal AI Report Modal ─────────────────────────────────────────── */
+    .terminal-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.88);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 10000;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.4s;
+    }
+    .terminal-overlay.show { opacity: 1; pointer-events: auto; }
+    .terminal-window {
+      width: min(1440px, 95vw);
+      height: min(810px, 90vh);
+      background: #080e08;
+      border: 1px solid #1a4a1a;
+      border-radius: 6px;
+      display: flex; flex-direction: column;
+      box-shadow: 0 0 80px rgba(0,255,70,0.12), 0 0 4px rgba(0,255,70,0.3);
+      overflow: hidden;
+    }
+    .terminal-titlebar {
+      background: #0d180d;
+      border-bottom: 1px solid #1a4a1a;
+      padding: 8px 18px;
+      display: flex; align-items: center; gap: 14px;
+      flex-shrink: 0;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      color: #00dd44;
+    }
+    .terminal-titlebar .term-title { font-weight: 700; letter-spacing: 1px; }
+    .terminal-titlebar .term-sep { color: #1a4a1a; }
+    .terminal-titlebar .term-hint {
+      margin-left: auto; font-size: 11px; color: #2a6a2a;
+    }
+    .term-alert-normal  { color: #00dd44; }
+    .term-alert-warning { color: #ddcc00; }
+    .term-alert-alarm   { color: #ff3333; animation: term-blink-alarm 1s step-end infinite; }
+    @keyframes term-blink-alarm { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .terminal-body {
+      flex: 1; overflow-y: auto; padding: 28px 32px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 15px; line-height: 1.8;
+      color: #00cc44;
+      scroll-behavior: smooth;
+    }
+    .terminal-body::-webkit-scrollbar { width: 6px; }
+    .terminal-body::-webkit-scrollbar-track { background: #0d180d; }
+    .terminal-body::-webkit-scrollbar-thumb { background: #1a4a1a; border-radius: 3px; }
+    #term-text { white-space: pre-wrap; word-break: break-word; }
+    .term-cursor {
+      display: inline-block; width: 10px; height: 1.1em;
+      background: #00cc44; vertical-align: text-bottom;
+      animation: term-blink 1s step-end infinite;
+    }
+    .term-cursor.done { animation: none; opacity: 0; }
+    @keyframes term-blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    .terminal-footer {
+      background: #0d180d;
+      border-top: 1px solid #1a4a1a;
+      padding: 6px 18px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 11px; color: #2a6a2a;
+      display: flex; justify-content: space-between;
+      flex-shrink: 0;
+    }
+    #term-countdown { color: #00aa33; }
     /* Simple markdown body overrides */
     .markdown-body h1, .markdown-body h2, .markdown-body h3 {
       margin-top: 1em;
@@ -1748,6 +1831,7 @@
                     <th>Avg 5G (Mbps)</th>
                     <th>Retry rate</th>
                     <th>Status</th>
+                    <th>AI Report</th>
                   </tr>
                 </thead>
                 <tbody id="wo-tbody"></tbody>
@@ -2343,28 +2427,218 @@
       document.getElementById('ai-modal').classList.remove('show');
     }
 
-    async function openAiSummary(wo, model) {
+    // ── Terminal AI Report (carousel mode) ──────────────────────────────────
+
+    let _termTimer      = null;  // typewriter interval
+    let _termPause      = null;  // 30s pause timeout
+    let _termCountdown  = null;  // countdown interval
+    let _termOnDone     = null;  // callback after modal closes
+    let _termSkipBound  = null;  // bound skip handler for cleanup
+
+    // Pre-fetched AI summary for carousel use
+    let carouselAiCache    = null;  // { summary, wo, model, yieldPct }
+    let carouselAiFetching = false;
+
+    async function prefetchCarouselAiReport() {
       if (!window.llmConnected) return;
-      
-      const modal = document.getElementById('ai-modal');
-      const title = document.getElementById('ai-modal-wo');
-      const loading = document.getElementById('ai-loading');
-      const result = document.getElementById('ai-result');
-      
-      title.textContent = wo;
+      // Use the latest work order (workOrders sorted newest-first)
+      const latest = Array.isArray(workOrders) && workOrders.length > 0
+        ? workOrders.slice().sort((a, b) => {
+            const ts = s => s ? new Date(s).getTime() : 0;
+            return ts(b.startTime) - ts(a.startTime);
+          })[0]
+        : null;
+      if (!latest) return;
+      if (carouselAiFetching) return;
+      carouselAiFetching = true;
+      carouselAiCache = null;
+      try {
+        const url = `${API_BASE}/api/workorders/${encodeURIComponent(latest.wo)}/ai-summary`
+          + `?product_model=${encodeURIComponent(latest.model || '')}&lang=en&mode=carousel`;
+        const res  = await fetch(url);
+        const data = await res.json();
+        if (res.ok && data.summary) {
+          carouselAiCache = { summary: data.summary, wo: latest.wo, model: latest.model, yieldPct: latest.yield };
+        }
+      } catch(e) {
+        console.warn('AI carousel prefetch failed:', e);
+      } finally {
+        carouselAiFetching = false;
+      }
+    }
+
+    function openTerminalReport(wo, model, yieldPct, summary, onDone) {
+      // Header
+      document.getElementById('term-wo-label').textContent      = `WO: ${wo}`;
+      document.getElementById('term-product-label').textContent  = `PRODUCT: ${model || '—'}`;
+      const alertEl  = document.getElementById('term-alert-label');
+      const alertLv  = yieldPct >= 99.2 ? 'NORMAL' : yieldPct >= 98.5 ? 'WARNING' : 'ALARM';
+      alertEl.textContent = alertLv;
+      alertEl.className   = alertLv === 'NORMAL' ? 'term-alert-normal'
+                          : alertLv === 'WARNING' ? 'term-alert-warning' : 'term-alert-alarm';
+
+      // Reset body
+      const textEl   = document.getElementById('term-text');
+      const cursorEl = document.getElementById('term-cursor');
+      const statusEl = document.getElementById('term-status');
+      const countEl  = document.getElementById('term-countdown');
+      textEl.textContent  = '';
+      cursorEl.className  = 'term-cursor';
+      statusEl.textContent = '● TYPING...';
+      countEl.textContent  = '';
+
+      _termOnDone = onDone;
+      document.getElementById('terminal-modal').classList.add('show');
+      document.getElementById('term-body').scrollTop = 0;
+
+      // Skip on click or keydown
+      _termSkipBound = () => closeTerminalReport(true);
+      document.getElementById('terminal-modal').addEventListener('click', _termSkipBound, { once: true });
+      document.addEventListener('keydown', _termSkipBound, { once: true });
+
+      // Typewriter — 0.02s per character
+      let i = 0;
+      _termTimer = setInterval(() => {
+        if (i < summary.length) {
+          textEl.textContent += summary[i++];
+          document.getElementById('term-body').scrollTop = 99999;
+        } else {
+          clearInterval(_termTimer); _termTimer = null;
+          cursorEl.className = 'term-cursor done';
+          statusEl.textContent = '✔ REPORT COMPLETE';
+
+          // 30-second countdown before auto-close
+          let remaining = 30;
+          countEl.textContent = `Auto-close in ${remaining}s`;
+          _termCountdown = setInterval(() => {
+            remaining--;
+            countEl.textContent = remaining > 0 ? `Auto-close in ${remaining}s` : '';
+            if (remaining <= 0) { clearInterval(_termCountdown); _termCountdown = null; }
+          }, 1000);
+
+          _termPause = setTimeout(() => closeTerminalReport(false), 30000);
+        }
+      }, 20);
+    }
+
+    function closeTerminalReport(skipped) {
+      if (_termTimer)     { clearInterval(_termTimer);   _termTimer    = null; }
+      if (_termPause)     { clearTimeout(_termPause);    _termPause    = null; }
+      if (_termCountdown) { clearInterval(_termCountdown); _termCountdown = null; }
+      // Remove skip listeners if they haven't fired yet
+      if (_termSkipBound) {
+        document.getElementById('terminal-modal').removeEventListener('click', _termSkipBound);
+        document.removeEventListener('keydown', _termSkipBound);
+        _termSkipBound = null;
+      }
+      document.getElementById('terminal-modal').classList.remove('show');
+      const cb = _termOnDone; _termOnDone = null;
+      if (cb) cb();
+    }
+
+    async function showCarouselAiReport(onDone) {
+      // Wait for background fetch to complete (max 120s)
+      let waited = 0;
+      while (carouselAiFetching && waited < 120000) {
+        await new Promise(r => setTimeout(r, 500));
+        waited += 500;
+      }
+      if (!carouselAiCache) { if (onDone) onDone(); return; }
+      const { summary, wo, model, yieldPct } = carouselAiCache;
+      openTerminalReport(wo, model, yieldPct, summary, onDone);
+    }
+
+    // ── Scheduled carousel (08:00-20:00, every 10 min) ───────────────────────
+    // Runs in parallel with the existing idle-based carousel.
+
+    const SCHEDULED_CAROUSEL_PAGES = ['dashboard', 'workorders', 'throughput'];
+    const SCHEDULED_CAROUSEL_INTERVAL_MS = 20000; // 20s per page
+    let _schedCarouselInterval  = null;
+    let _schedCarouselIdx       = 0;
+    let _schedCheckerInterval   = null;
+    let _lastSchedTriggerMinute = -1;
+
+    function isScheduledHour() {
+      const h = new Date().getHours();
+      return h >= 8 && h < 20;
+    }
+
+    function startScheduledCarousel() {
+      if (_schedCarouselInterval) return; // already running
+      carouselAiCache    = null;
+      carouselAiFetching = false;
+      prefetchCarouselAiReport(); // kick off background fetch immediately
+
+      _schedCarouselIdx = 0;
+      showPage(SCHEDULED_CAROUSEL_PAGES[0]);
+
+      _schedCarouselInterval = setInterval(() => {
+        _schedCarouselIdx++;
+        if (_schedCarouselIdx < SCHEDULED_CAROUSEL_PAGES.length) {
+          showPage(SCHEDULED_CAROUSEL_PAGES[_schedCarouselIdx]);
+        } else {
+          // AI Report step — stop interval, hand off to terminal
+          clearInterval(_schedCarouselInterval); _schedCarouselInterval = null;
+          showCarouselAiReport(() => {
+            // After terminal closes, scheduled sequence is done
+            _schedCarouselIdx = 0;
+          });
+        }
+      }, SCHEDULED_CAROUSEL_INTERVAL_MS);
+    }
+
+    function startCarouselScheduler() {
+      if (_schedCheckerInterval) clearInterval(_schedCheckerInterval);
+      _lastSchedTriggerMinute = -1;
+      // Check every 30 seconds
+      _schedCheckerInterval = setInterval(() => {
+        if (!isScheduledHour()) return;
+        const m = new Date().getMinutes();
+        if (m % 10 !== 0) return;
+        if (m === _lastSchedTriggerMinute) return; // already triggered this minute
+        _lastSchedTriggerMinute = m;
+        startScheduledCarousel();
+      }, 30000);
+    }
+
+    async function openAiSummary(wo, model, lang, yieldPct) {
+      if (!window.llmConnected) return;
+
+      // Compute alert level from yield
+      const alertLevel = yieldPct >= 99.2 ? 'normal' : yieldPct >= 98.5 ? 'warning' : 'alarm';
+      const alertCls   = alertLevel === 'normal' ? 'badge-green' : alertLevel === 'warning' ? 'badge-amber' : 'badge-red';
+      const alertLabel = lang === 'zh'
+        ? (alertLevel === 'normal' ? '正常' : alertLevel === 'warning' ? '警告' : '告警')
+        : (alertLevel === 'normal' ? 'Normal' : alertLevel === 'warning' ? 'Warning' : 'ALARM');
+
+      const modal       = document.getElementById('ai-modal');
+      const titleEl     = document.getElementById('ai-modal-wo');
+      const alertBadge  = document.getElementById('ai-modal-alert');
+      const langBadge   = document.getElementById('ai-modal-lang');
+      const loading     = document.getElementById('ai-loading');
+      const loadingText = document.getElementById('ai-loading-text');
+      const result      = document.getElementById('ai-result');
+
+      titleEl.textContent = wo;
+      const productEl = document.getElementById('ai-modal-product');
+      if (productEl) productEl.textContent = model && model !== 'ALL' ? `│ ${model}` : '';
+      alertBadge.className = `badge ${alertCls}`;
+      alertBadge.textContent = alertLabel;
+      langBadge.textContent = lang === 'zh' ? '中文' : 'English';
+
       loading.style.display = 'flex';
       result.style.display = 'none';
       result.innerHTML = '';
+      if (loadingText) loadingText.textContent = lang === 'zh' ? 'AI 正在努力分析中，請稍候...' : 'AI is analyzing, please wait...';
       modal.classList.add('show');
-      
+
       try {
-        const res = await fetch(`${API_BASE}/api/workorders/${encodeURIComponent(wo)}/ai-summary?product_model=${encodeURIComponent(model === 'ALL' ? '' : model)}`);
+        const res = await fetch(`${API_BASE}/api/workorders/${encodeURIComponent(wo)}/ai-summary?product_model=${encodeURIComponent(model === 'ALL' ? '' : model)}&lang=${lang}`);
         const data = await res.json();
-        
         if (res.ok && data.summary) {
-           result.innerHTML = marked.parse(data.summary);
+          result.innerHTML = marked.parse(data.summary);
         } else {
-           result.innerHTML = `<span style="color:var(--red);">Error: ${data.detail || 'Analysis failed'}</span>`;
+          result.innerHTML = `<span style="color:var(--red);">Error: ${data.detail || 'Analysis failed'}</span>`;
         }
       } catch(e) {
         result.innerHTML = `<span style="color:var(--red);">Request failed: ${e.message}</span>`;
@@ -2381,6 +2655,7 @@
       startSidebarClock();
       checkLlmStatus();
       bindAutoCarouselActivityWatchers();
+      startCarouselScheduler();
 
       // Yield trend
       yieldChartRef = mkChart('yieldChart', 'bar', HOURS, [
@@ -3234,7 +3509,7 @@
       const pageRows = sorted.slice(start, start + WO_PAGE_SIZE);
       const tb = document.getElementById('wo-tbody');
       if (!pageRows || pageRows.length === 0) {
-        tb.innerHTML = '<tr><td colspan="11" style="color:var(--muted)">N/A</td></tr>';
+        tb.innerHTML = '<tr><td colspan="12" style="color:var(--muted)">N/A</td></tr>';
         updateWorkOrderPager(total, totalPages);
         return;
       }
@@ -3259,7 +3534,12 @@
       <td>${r.avg5g}</td>
       <td>${r.retry}%</td>
       <td><span class="badge ${bCls}">${bLabel}</span></td>
-        <td><button class="ai-btn" onclick="openAiSummary('${r.wo}', '${r.model}')" ${window.llmConnected ? "" : "disabled"} title="${window.llmConnected ? '生成 AI 分析報告' : 'LLM 伺服器未連線'}">✨ AI</button></td>
+      <td>
+        <div style="display:flex;gap:4px">
+          <button class="ai-btn ai-btn-zh" onclick="openAiSummary('${r.wo}','${r.model}','zh',${r.yield})" ${window.llmConnected ? "" : "disabled"} title="${window.llmConnected ? '產出繁體中文報告' : 'LLM 伺服器未連線'}">ZH</button>
+          <button class="ai-btn ai-btn-en" onclick="openAiSummary('${r.wo}','${r.model}','en',${r.yield})" ${window.llmConnected ? "" : "disabled"} title="${window.llmConnected ? 'Generate English report' : 'LLM server not connected'}">EN</button>
+        </div>
+      </td>
     </tr>`;
       }).join('');
       updateWorkOrderPager(total, totalPages);
@@ -3919,17 +4199,46 @@
 
   </script>
 
+  <!-- Terminal AI Report Modal (carousel mode) -->
+  <div class="terminal-overlay" id="terminal-modal">
+    <div class="terminal-window">
+      <div class="terminal-titlebar">
+        <span class="term-title">⬛ AI QUALITY REPORT</span>
+        <span class="term-sep">│</span>
+        <span id="term-wo-label">WO: —</span>
+        <span class="term-sep">│</span>
+        <span id="term-product-label">PRODUCT: —</span>
+        <span class="term-sep">│</span>
+        <span id="term-alert-label" class="term-alert-normal">NORMAL</span>
+        <span class="term-hint">[ Click or press any key to skip ]</span>
+      </div>
+      <div class="terminal-body" id="term-body">
+        <span id="term-text"></span><span class="term-cursor" id="term-cursor"></span>
+      </div>
+      <div class="terminal-footer">
+        <span id="term-status">● GENERATING...</span>
+        <span id="term-countdown"></span>
+      </div>
+    </div>
+  </div>
+
   <!-- AI Modal -->
   <div class="ai-modal-overlay" id="ai-modal">
     <div class="ai-modal-content">
       <div class="ai-modal-header">
-        <div class="ai-modal-title">✨ AI 測試總結報告 <span id="ai-modal-wo" style="color:var(--blue); font-size:13px; font-weight:normal; font-family:monospace; margin-left:8px;"></span></div>
+        <div class="ai-modal-title">
+          ✨ AI Report
+          <span id="ai-modal-wo" style="color:var(--blue); font-size:13px; font-weight:normal; font-family:monospace; margin-left:8px;"></span>
+          <span id="ai-modal-product" style="color:var(--muted); font-size:12px; font-weight:normal; margin-left:4px;"></span>
+          <span id="ai-modal-alert" class="badge badge-green" style="margin-left:8px; font-size:11px;"></span>
+          <span id="ai-modal-lang" style="margin-left:6px; font-size:11px; color:var(--muted); background:var(--surface2); padding:2px 7px; border-radius:3px; border:1px solid var(--border);"></span>
+        </div>
         <button class="ai-modal-close" onclick="closeAiModal()">×</button>
       </div>
       <div class="ai-modal-body" id="ai-modal-body">
         <div id="ai-loading" style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px 0; gap:12px;">
-           <div style="width:30px; height:30px; border:3px solid var(--border); border-top-color:var(--blue); border-radius:50%; animation:spin 1s linear infinite;"></div>
-           <div style="color:var(--muted); font-size:13px;">AI 正在努力分析中，請稍候...</div>
+          <div style="width:30px; height:30px; border:3px solid var(--border); border-top-color:var(--blue); border-radius:50%; animation:spin 1s linear infinite;"></div>
+          <div id="ai-loading-text" style="color:var(--muted); font-size:13px;">AI 正在努力分析中，請稍候...</div>
         </div>
         <div id="ai-result" style="display:none;" class="markdown-body"></div>
       </div>

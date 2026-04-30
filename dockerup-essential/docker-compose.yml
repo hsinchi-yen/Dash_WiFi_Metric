@@ -71,6 +71,7 @@ services:
       - ./WiFiTestLogs:/app/WiFiTestLogs
       - ${STORAGE_PATH:-/mnt/md127/WIFI_YFP_DashBoard}/docker-data/app-logs:/app/runtime-logs
       - ./api/app.py:/app/app.py
+      - ./api/ai_summary_helper.py:/app/ai_summary_helper.py
       - ./log_parser.py:/app/log_parser.py
       - ./wifi_dashboard.html:/app/wifi_dashboard.html
     ports:
