@@ -1590,24 +1590,31 @@
     .terminal-body::-webkit-scrollbar { width: 6px; }
     .terminal-body::-webkit-scrollbar-track { background: #111100; }
     .terminal-body::-webkit-scrollbar-thumb { background: #3a3a00; border-radius: 3px; }
-    /* Report text layers */
+    /* Report text layers - Cyberpunk High Contrast */
     .term-report-title {
       display: block;
-      color: #FFFFFF; font-weight: 700;
+      color: #00e5ff; font-weight: 700;
+      text-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
       font-size: 22px; letter-spacing: 1px;
       margin-bottom: 6px;
     }
     .term-section-header {
       display: block;
-      color: #FFFFFF; font-weight: 700;
+      color: #ff00ff; font-weight: 700;
+      text-shadow: 0 0 5px rgba(255, 0, 255, 0.4);
       font-size: 17px;
       margin-top: 14px; margin-bottom: 2px;
     }
     .term-content {
-      display: block;
-      color: #FFD700; font-size: 15px;
+      display: inline;
+      color: #add8e6; font-size: 15px;
       white-space: pre-wrap; word-break: break-word;
     }
+    /* Syntax Highlighting */
+    .term-hl-num { color: #00ffff; font-weight: 700; }
+    .term-hl-ok { color: #00ff00; font-weight: 700; text-shadow: 0 0 5px rgba(0, 255, 0, 0.4); }
+    .term-hl-err { color: #ff3333; font-weight: 700; text-shadow: 0 0 5px rgba(255, 51, 51, 0.4); }
+    .term-hl-warn { color: #ff9900; font-weight: 700; text-shadow: 0 0 5px rgba(255, 153, 0, 0.4); }
     /* Cursor */
     .term-cursor {
       display: inline-block; width: 10px; height: 1.1em;
@@ -2501,31 +2508,73 @@
 
     // Parse LLM report text into typed segments for styled typewriter rendering.
     // Segments: { type: 'report-title'|'section-header'|'content'|'blank', text }
+    // parseTerminalSegments also processes custom tags (<num>, <ok>, <err>, <warn>) inside lines.
+    // It returns an array of segments, each segment can be a single styled span.
     function parseTerminalSegments(text) {
       const segments = [];
-      for (const raw of text.split('\n')) {
+      const lines = text.split('\n');
+      
+      for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i];
         const line = raw.trimEnd();
         if (!line.trim()) {
           segments.push({ type: 'blank', text: '' });
           continue;
         }
-        // Detect list markers before stripping — list items are always content
+
+        // Detect line type
         const isList = /^\s*[-*]\s+/.test(line);
-        const clean = line
-          .replace(/^#+\s*/, '')                      // strip leading # headings
-          .replace(/\*{1,3}([^*\n]+)\*{1,3}/g, '$1') // strip inline **bold** / *italic*
-          .replace(/_{1,2}([^_\n]+)_{1,2}/g, '$1')   // strip inline __underline__
-          .replace(/^\s*[-*]\s+/, '')                 // strip leading list markers (- or *)
+        let clean = line
+          .replace(/^#+\s*/, '')
+          .replace(/\*{1,3}([^*\n]+)\*{1,3}/g, '$1')
+          .replace(/_{1,2}([^_\n]+)_{1,2}/g, '$1')
+          .replace(/^\s*[-*]\s+/, '')
           .trim();
+
+        let baseType = 'content';
         if (!isList && /^WiFi\s+Test\s+Summary\s+Report/i.test(clean)) {
-          segments.push({ type: 'report-title', text: clean });
-          continue;
+          baseType = 'report-title';
+        } else if (!isList && /^\d+\.\s+\S/.test(clean)) {
+          baseType = 'section-header';
         }
-        if (!isList && /^\d+\.\s+\S/.test(clean)) {
-          segments.push({ type: 'section-header', text: clean });
-          continue;
+
+        // Parse custom tags if it's content
+        if (baseType === 'content') {
+           // We use a regex to find all <tag>...</tag> and split the line
+           const tagRegex = /<(num|ok|err|warn)>([\s\S]*?)<\/\1>/g;
+           let lastIndex = 0;
+           let match;
+           
+           // Use the original line (or clean line) to preserve spaces if needed. 
+           // We use `clean || line` but without the markdown stripped for the inner loop text, 
+           // actually let's just parse the tags from the `clean || line` text
+           const textToParse = clean || line;
+
+           while ((match = tagRegex.exec(textToParse)) !== null) {
+              // Add text before tag
+              if (match.index > lastIndex) {
+                 segments.push({ type: 'content', text: textToParse.substring(lastIndex, match.index) });
+              }
+              // Add tagged text
+              const tagType = match[1]; // num, ok, err, warn
+              const innerText = match[2];
+              segments.push({ type: `content-${tagType}`, text: innerText });
+              lastIndex = tagRegex.lastIndex;
+           }
+           // Add remaining text
+           if (lastIndex < textToParse.length) {
+              segments.push({ type: 'content', text: textToParse.substring(lastIndex) });
+           }
+        } else {
+           // For title and header, just push the whole line (remove any raw tags if LLM messed up)
+           clean = clean.replace(/<\/?(num|ok|err|warn)>/g, '');
+           segments.push({ type: baseType, text: clean });
         }
-        segments.push({ type: 'content', text: clean || line });
+        
+        // Add a newline segment after each line (except the last one if we don't want an extra blank)
+        // But the previous logic added block elements for each line. 
+        // Since we are now using inline spans for multiple segments per line, we MUST add a newline segment.
+        segments.push({ type: 'newline', text: '' });
       }
       return segments;
     }
@@ -2661,11 +2710,20 @@
             body.scrollTop = 99999;
             return;
           }
+          if (seg.type === 'newline') {
+            const br = document.createElement('div');
+            br.className = 'term-content';
+            contentEl.appendChild(br);
+            segIdx++; charIdx = 0; currentSpan = null;
+            body.scrollTop = 99999;
+            return;
+          }
           if (charIdx === 0) {
             currentSpan = document.createElement('span');
             currentSpan.className =
               seg.type === 'report-title'   ? 'term-report-title' :
-              seg.type === 'section-header' ? 'term-section-header' : 'term-content';
+              seg.type === 'section-header' ? 'term-section-header' : 
+              seg.type.startsWith('content-') ? 'term-hl-' + seg.type.split('-')[1] : 'term-content';
             contentEl.appendChild(currentSpan);
           }
           if (charIdx < seg.text.length) {

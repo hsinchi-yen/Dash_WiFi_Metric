@@ -25,6 +25,7 @@ def build_summary_messages(
 ) -> list[dict]:
     yield_pct = float(stats["yield_pct"])
     alert_zh, alert_en = _alert_labels(yield_pct)
+    alert_tag = "ok" if yield_pct >= 99.2 else "warn" if yield_pct >= 98.5 else "err"
 
     if mode == "carousel":
         # Structured English report for terminal typewriter display.
@@ -47,22 +48,22 @@ def build_summary_messages(
             f"Report Status: Completed\n"
             f"Test Type: WiFi RF Performance & Throughput Test\n\n"
             f"2. Test Statistics\n"
-            f"Total Units Tested: {stats['total']}\n"
-            f"Total Passed: {stats['passed']}\n"
-            f"Total Failed: {stats['failed']}\n"
-            f"Yield Rate: {yield_pct}%\n"
-            f"Alert Level: {alert_en} (Threshold: >=99.2% Normal, 98.5-99.19% Warning, <98.5% Alarm)\n\n"
+            f"Total Units Tested: <num>{stats['total']}</num>\n"
+            f"Total Passed: <ok>{stats['passed']}</ok>\n"
+            f"Total Failed: <err>{stats['failed']}</err>\n"
+            f"Yield Rate: <num>{yield_pct}%</num>\n"
+            f"Alert Level: <{alert_tag}>{alert_en}</{alert_tag}> (Threshold: >=99.2% Normal, 98.5-99.19% Warning, <98.5% Alarm)\n\n"
             f"3. RF Performance Metrics\n"
-            f"Average 2.4G Throughput: {stats['avg_24g']} Mbps\n"
-            f"Average 5G Throughput: {stats['avg_5g']} Mbps\n\n"
+            f"Average 2.4G Throughput: <num>{stats['avg_24g']} Mbps</num>\n"
+            f"Average 5G Throughput: <num>{stats['avg_5g']} Mbps</num>\n\n"
             f"4. Yield Analysis\n"
             f"[Write 2 sentences: assess yield vs alert threshold, production status.]\n\n"
             f"5. Failure Analysis & Recommendations\n"
-            f"Failure Root Cause: {fails_display}\n"
-            f"[Write 2-3 sentences of follow-up recommendations based on the failure data.]\n\n"
+            f"Failure Root Cause: <err>{fails_display}</err>\n"
+            f"[Write 2-3 sentences of follow-up recommendations based on the failure data. Enclose any specific numbers, percentages, or units in <num>...</num> tags, any positive statuses in <ok>...</ok> tags, and any negative statuses or warnings in <err>...</err> tags.]\n\n"
             f"Fill in the bracketed placeholders with your analysis. "
             f"Keep section headers exactly as shown (e.g. '1. General Information'). "
-            f"ENGLISH ONLY. No markdown. 请用英文回复。"
+            f"ENGLISH ONLY. No markdown. 请用纯英文。 Use the xml-like tags (<num>, <ok>, <err>, <warn>) strictly for highlighting."
         )
         return [
             {"role": "system", "content": system_msg},
