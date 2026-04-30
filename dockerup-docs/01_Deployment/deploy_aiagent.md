@@ -28,9 +28,9 @@
 
 | 檔案路徑 | 異動內容 |
 |---|---|
-| `dockerup-essential/api/app.py` | 新增 `lang` 參數支援；改呼叫 `build_summary_messages()` |
+| `dockerup-essential/api/app.py` | 新增 `lang` 參數支援；改呼叫 `build_summary_messages()`；**放寬 urllib 請求 LLM timeout 為 180s** |
 | `dockerup-essential/docker-compose.yml` | api volumes 新增 `ai_summary_helper.py` 掛載 |
-| `dockerup-essential/wifi_dashboard.html` | Work Orders 表格新增 AI Report 欄；ZH/EN 按鈕；Modal 告警等級顯示 |
+| `dockerup-essential/wifi_dashboard.html` | Work Orders 表格新增 AI Report 欄；ZH/EN 按鈕；Modal 告警等級顯示；**防呆擋截重複輪播 LLM 請求並放寬前端 fetch timeout 為 180s** |
 
 ---
 
