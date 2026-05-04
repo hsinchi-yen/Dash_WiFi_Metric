@@ -2551,7 +2551,7 @@
           .trim();
 
         let baseType = 'content';
-        if (!isList && /^WiFi\s+Test\s+Summary\s+Report/i.test(clean)) {
+        if (!isList && /^WiFi\s+(Test\s+Summary\s+Report|測試品質報告)/i.test(clean)) {
           baseType = 'report-title';
         } else if (!isList && /^\d+\.\s+\S/.test(clean)) {
           baseType = 'section-header';
