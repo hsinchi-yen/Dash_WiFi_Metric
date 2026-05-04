@@ -28,43 +28,79 @@ def build_summary_messages(
     alert_tag = "ok" if yield_pct >= 99.2 else "warn" if yield_pct >= 98.5 else "err"
 
     if mode == "carousel":
-        # Structured English report for terminal typewriter display.
+        # Structured report for terminal typewriter display.
         # Must follow the exact section-header format so parseTerminalSegments()
         # can classify lines into report-title / section-header / content.
-        fails_display = fails_text if fails_text else "No specific failures (all passed)"
-        system_msg = (
-            "You are a professional manufacturing test engineer. "
-            "Respond in English only. Do NOT use markdown symbols (no **, no #, no -). "
-            "Use plain text with the exact numbered-section structure shown in the template. "
-            "注意：请完全使用英文回复，不要使用中文字符，不要使用markdown符号。"
-        )
-        prompt = (
-            f"[IMPORTANT] 注意：请完全用英文回复，不使用markdown符号，严格按照模板格式输出。\n\n"
-            f"Generate a WiFi test quality report for work order {wo}.\n"
-            f"You MUST follow this EXACT template structure (plain text, no markdown):\n\n"
-            f"WiFi Test Summary Report\n\n"
-            f"1. General Information\n"
-            f"Work Order: {wo}\n"
-            f"Report Status: Completed\n"
-            f"Test Type: WiFi RF Performance & Throughput Test\n\n"
-            f"2. Test Statistics\n"
-            f"Total Units Tested: <num>{stats['total']}</num>\n"
-            f"Total Passed: <ok>{stats['passed']}</ok>\n"
-            f"Total Failed: <err>{stats['failed']}</err>\n"
-            f"Yield Rate: <num>{yield_pct}%</num>\n"
-            f"Alert Level: <{alert_tag}>{alert_en}</{alert_tag}> (Threshold: >=99.2% Normal, 98.5-99.19% Warning, <98.5% Alarm)\n\n"
-            f"3. RF Performance Metrics\n"
-            f"Average 2.4G Throughput: <num>{stats['avg_24g']} Mbps</num>\n"
-            f"Average 5G Throughput: <num>{stats['avg_5g']} Mbps</num>\n\n"
-            f"4. Yield Analysis\n"
-            f"[Write 2 sentences: assess yield vs alert threshold, production status.]\n\n"
-            f"5. Failure Analysis & Recommendations\n"
-            f"Failure Root Cause: <err>{fails_display}</err>\n"
-            f"[Write 2-3 sentences of follow-up recommendations based on the failure data. Enclose any specific numbers, percentages, or units in <num>...</num> tags, any positive statuses in <ok>...</ok> tags, and any negative statuses or warnings in <err>...</err> tags.]\n\n"
-            f"Fill in the bracketed placeholders with your analysis. "
-            f"Keep section headers exactly as shown (e.g. '1. General Information'). "
-            f"ENGLISH ONLY. No markdown. 请用纯英文。 Use the xml-like tags (<num>, <ok>, <err>, <warn>) strictly for highlighting."
-        )
+        if lang == "en":
+            fails_display = fails_text if fails_text else "No specific failures (all passed)"
+            system_msg = (
+                "You are a professional manufacturing test engineer. "
+                "Respond in English only. Do NOT use markdown symbols (no **, no #, no -). "
+                "Use plain text with the exact numbered-section structure shown in the template. "
+                "注意：請完全使用英文撰寫，不要使用中文，不要使用markdown格式。"
+            )
+            prompt = (
+                f"[IMPORTANT] 注意：請完全使用英文撰寫，不要使用markdown格式，嚴格遵守模板格式要求。\n\n"
+                f"Generate a WiFi test quality report for work order {wo}.\n"
+                f"You MUST follow this EXACT template structure (plain text, no markdown):\n\n"
+                f"WiFi Test Summary Report\n\n"
+                f"1. General Information\n"
+                f"Work Order: {wo}\n"
+                f"Report Status: Completed\n"
+                f"Test Type: WiFi RF Performance & Throughput Test\n\n"
+                f"2. Test Statistics\n"
+                f"Total Units Tested: <num>{stats['total']}</num>\n"
+                f"Total Passed: <ok>{stats['passed']}</ok>\n"
+                f"Total Failed: <err>{stats['failed']}</err>\n"
+                f"Yield Rate: <num>{yield_pct}%</num>\n"
+                f"Alert Level: <{alert_tag}>{alert_en}</{alert_tag}> (Threshold: >=99.2% Normal, 98.5-99.19% Warning, <98.5% Alarm)\n\n"
+                f"3. RF Performance Metrics\n"
+                f"Average 2.4G Throughput: <num>{stats['avg_24g']} Mbps</num>\n"
+                f"Average 5G Throughput: <num>{stats['avg_5g']} Mbps</num>\n\n"
+                f"4. Yield Analysis\n"
+                f"[Write 2 sentences: assess yield vs alert threshold, production status.]\n\n"
+                f"5. Failure Analysis & Recommendations\n"
+                f"Failure Root Cause: <err>{fails_display}</err>\n"
+                f"[Write 2-3 sentences of follow-up recommendations based on the failure data. Enclose any specific numbers, percentages, or units in <num>...</num> tags, any positive statuses in <ok>...</ok> tags, and any negative statuses or warnings in <err>...</err> tags.]\n\n"
+                f"Fill in the bracketed placeholders with your analysis. "
+                f"Keep section headers exactly as shown (e.g. '1. General Information'). "
+                f"ENGLISH ONLY. No markdown. 請用純英文。 Use the xml-like tags (<num>, <ok>, <err>, <warn>) strictly for highlighting."
+            )
+        else:
+            fails_display = fails_text if fails_text else "無特定異常(全數Pass)"
+            system_msg = (
+                "You are a professional manufacturing test engineer. "
+                "Respond primarily in Traditional Chinese (繁體中文). Do NOT use markdown symbols (no **, no #, no -). "
+                "Use plain text with the exact numbered-section structure shown in the template. "
+                "注意：請以繁體中文回答，絕對不要變更英文段落標題，不要使用markdown格式。"
+            )
+            prompt = (
+                f"[IMPORTANT] 注意：請以繁體中文回答，絕對不要變更英文段落標題，不要使用markdown格式。\n\n"
+                f"Generate a WiFi test quality report for work order {wo}.\n"
+                f"You MUST follow this EXACT template structure (plain text, no markdown):\n\n"
+                f"WiFi Test Summary Report\n\n"
+                f"1. General Information\n"
+                f"Work Order: {wo}\n"
+                f"Report Status: Completed\n"
+                f"Test Type: WiFi RF Performance & Throughput Test\n\n"
+                f"2. Test Statistics\n"
+                f"Total Units Tested: <num>{stats['total']}</num>\n"
+                f"Total Passed: <ok>{stats['passed']}</ok>\n"
+                f"Total Failed: <err>{stats['failed']}</err>\n"
+                f"Yield Rate: <num>{yield_pct}%</num>\n"
+                f"Alert Level: <{alert_tag}>{alert_en}</{alert_tag}> (Threshold: >=99.2% Normal, 98.5-99.19% Warning, <98.5% Alarm)\n\n"
+                f"3. RF Performance Metrics\n"
+                f"Average 2.4G Throughput: <num>{stats['avg_24g']} Mbps</num>\n"
+                f"Average 5G Throughput: <num>{stats['avg_5g']} Mbps</num>\n\n"
+                f"4. Yield Analysis\n"
+                f"[請以2句繁體中文評估良率與警報狀態、生產情況]\n\n"
+                f"5. Failure Analysis & Recommendations\n"
+                f"Failure Root Cause: <err>{fails_display}</err>\n"
+                f"[請以 2-3 句繁體中文提供後續建議。請將數字和單位用 <num>...</num> 包起來，正面狀態用 <ok>...</ok> 包起來，負面或異常狀態用 <err>...</err> 包起來]\n\n"
+                f"Fill in the bracketed placeholders with your analysis in Traditional Chinese. "
+                f"Keep section headers exactly as shown in English (e.g. '1. General Information'). "
+                f"No markdown. 不要使用 markdown。Use the xml-like tags (<num>, <ok>, <err>, <warn>) strictly for highlighting."
+            )
         return [
             {"role": "system", "content": system_msg},
             {"role": "user",   "content": prompt},

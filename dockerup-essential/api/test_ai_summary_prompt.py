@@ -122,7 +122,7 @@ def test_carousel_system_msg_enforces_english_and_no_markdown():
 def test_carousel_system_msg_has_chinese_language_override():
     messages = build_summary_messages(SAMPLE_STATS, SAMPLE_FAILS, WO, "en", mode="carousel")
     system = messages[0]["content"]
-    assert "请" in system and "英文" in system, \
+    assert "請" in system and "英文" in system, \
         "carousel system message must include Chinese-language English directive"
 
 
@@ -159,10 +159,21 @@ def test_carousel_alert_level_in_prompt():
             f"carousel prompt for yield {yield_pct}% must show alert level '{expected}'"
 
 
-def test_carousel_mode_ignores_lang_zh():
-    """carousel mode is always English regardless of lang parameter."""
+def test_carousel_mode_supports_lang_zh():
+    """carousel mode now supports Chinese content while keeping English section headers."""
     messages_en = build_summary_messages(SAMPLE_STATS, SAMPLE_FAILS, WO, "en", mode="carousel")
     messages_zh = build_summary_messages(SAMPLE_STATS, SAMPLE_FAILS, WO, "zh", mode="carousel")
-    # Both should produce English system messages
+    
+    # EN should enforce English
     assert "english" in messages_en[0]["content"].lower()
-    assert "english" in messages_zh[0]["content"].lower()
+    
+    # ZH should enforce Traditional Chinese but keep English template
+    sys_zh = messages_zh[0]["content"]
+    assert "traditional chinese" in sys_zh.lower() or "繁體中文" in sys_zh, \
+        "carousel zh system message must request Traditional Chinese"
+    
+    prompt_zh = messages_zh[1]["content"]
+    assert "WiFi Test Summary Report" in prompt_zh and "1. General Information" in prompt_zh, \
+        "carousel zh prompt must keep English section headers"
+    assert "繁體中文" in prompt_zh or "traditional chinese" in prompt_zh.lower(), \
+        "carousel zh prompt must request Chinese for analysis"

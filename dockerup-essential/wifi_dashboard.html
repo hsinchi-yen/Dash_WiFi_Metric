@@ -2787,51 +2787,37 @@
         : null;
       if (!latest) { alert('No work order data loaded.'); return; }
 
-      // Phase 1: open terminal immediately with loading animation
-      openTerminalWithLoading(latest.wo, latest.model || '—', latest.yield || 0);
+      // Reset cache for manual trigger to ensure fresh report
+      carouselAiCacheEN = null;
+      carouselAiCacheZH = null;
+      carouselAiFetchingEN = false;
+      carouselAiFetchingZH = false;
+
+      // Kick off background fetch for both languages using the latest work order
+      prefetchCarouselAiReport('en');
+      prefetchCarouselAiReport('zh');
 
       const navItem = document.getElementById('nav-ai-report');
       if (navItem) navItem.style.opacity = '0.5';
 
       try {
-        // Wait if there is a background prefetch in progress
-        if (carouselAiFetchingEN) {
-          let waited = 0;
-          while (carouselAiFetchingEN && waited < 180000) {
-            await new Promise(r => setTimeout(r, 500));
-            waited += 500;
-          }
-        }
-        
-        // Use cached result if available and matches the latest work order
-        if (carouselAiCacheEN && carouselAiCacheEN.wo === latest.wo) {
-          startTerminalContent(carouselAiCacheEN.summary, null);
-          return;
-        }
+        // Phase 1: open terminal immediately with loading animation for English
+        openTerminalWithLoading(latest.wo, latest.model || 'X', latest.yield || 0);
 
-        const url = `${API_BASE}/api/workorders/${encodeURIComponent(latest.wo)}/ai-summary`
-          + `?product_model=${encodeURIComponent(latest.model || '')}&lang=en&mode=carousel`;
-        const res  = await fetchWithTimeout(url, 180000);
-        const data = await res.json();
-        if (!res.ok || !data.summary) {
-          // Phase 2: show error in terminal (startTerminalContent checks if still open)
-          startTerminalContent(
-            `AI report request failed.\nReason: ${data.detail || 'Unknown error'}\n\nPlease retry when LLM is ready.`,
-            null
-          );
-          return;
-        }
-        // Phase 2: transition to typewriter
-        startTerminalContent(data.summary, null);
+        // Show English first
+        showCarouselAiReport('en', () => {
+          // After EN terminal closes (auto-closes after 30s or user skips), wait a moment then show ZH
+          setTimeout(() => {
+            // Re-open loading for Chinese if it's not ready yet, otherwise it skips loading
+            openTerminalWithLoading(latest.wo, latest.model || 'X', latest.yield || 0);
+            showCarouselAiReport('zh', () => {
+                // Done with both
+                if (navItem) navItem.style.opacity = '';
+            });
+          }, 500); // short delay between EN closing and ZH opening
+        });
       } catch(e) {
-        const reason = e.name === 'AbortError'
-          ? 'LLM did not respond within 180 seconds (timeout).'
-          : e.message;
-        startTerminalContent(
-          `AI report unavailable.\n${reason}\n\nPlease check LLM connection and retry.`,
-          null
-        );
-      } finally {
+        console.error(e);
         if (navItem) navItem.style.opacity = '';
       }
     }
