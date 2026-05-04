@@ -2465,8 +2465,10 @@
     let _termLoadingInterval = null;  // loading dots animation interval
 
     // Pre-fetched AI summary for carousel use
-    let carouselAiCache    = null;  // { summary, wo, model, yieldPct }
-    let carouselAiFetching = false;
+    let carouselAiCacheEN    = null;  // { summary, wo, model, yieldPct }
+    let carouselAiCacheZH    = null;
+    let carouselAiFetchingEN = false;
+    let carouselAiFetchingZH = false;
 
     // fetch with AbortController timeout (default 180s — backend LLM timeout is 180s)
     async function fetchWithTimeout(url, timeoutMs = 180000) {
@@ -2479,7 +2481,7 @@
       }
     }
 
-    async function prefetchCarouselAiReport() {
+    async function prefetchCarouselAiReport(lang = 'en') {
       if (!window.llmConnected) return;
       // Use the latest work order (workOrders sorted newest-first)
       const latest = Array.isArray(workOrders) && workOrders.length > 0
@@ -2489,21 +2491,37 @@
           })[0]
         : null;
       if (!latest) return;
-      if (carouselAiFetching) return;
-      carouselAiFetching = true;
-      carouselAiCache = null;
+      
+      if (lang === 'en') {
+        if (carouselAiFetchingEN) return;
+        carouselAiFetchingEN = true;
+        carouselAiCacheEN = null;
+      } else {
+        if (carouselAiFetchingZH) return;
+        carouselAiFetchingZH = true;
+        carouselAiCacheZH = null;
+      }
+
       try {
         const url = `${API_BASE}/api/workorders/${encodeURIComponent(latest.wo)}/ai-summary`
-          + `?product_model=${encodeURIComponent(latest.model || '')}&lang=en&mode=carousel`;
+          + `?product_model=${encodeURIComponent(latest.model || '')}&lang=${lang}&mode=carousel`;
         const res  = await fetchWithTimeout(url);
         const data = await res.json();
         if (res.ok && data.summary) {
-          carouselAiCache = { summary: data.summary, wo: latest.wo, model: latest.model, yieldPct: latest.yield };
+          if (lang === 'en') {
+            carouselAiCacheEN = { summary: data.summary, wo: latest.wo, model: latest.model, yieldPct: latest.yield };
+          } else {
+            carouselAiCacheZH = { summary: data.summary, wo: latest.wo, model: latest.model, yieldPct: latest.yield };
+          }
         }
       } catch(e) {
-        console.warn('AI carousel prefetch failed:', e.name === 'AbortError' ? 'timeout (180s)' : e.message);
+        console.warn(`AI carousel prefetch (${lang}) failed:`, e.name === 'AbortError' ? 'timeout (180s)' : e.message);
       } finally {
-        carouselAiFetching = false;
+        if (lang === 'en') {
+          carouselAiFetchingEN = false;
+        } else {
+          carouselAiFetchingZH = false;
+        }
       }
     }
 
@@ -2777,17 +2795,17 @@
 
       try {
         // Wait if there is a background prefetch in progress
-        if (carouselAiFetching) {
+        if (carouselAiFetchingEN) {
           let waited = 0;
-          while (carouselAiFetching && waited < 180000) {
+          while (carouselAiFetchingEN && waited < 180000) {
             await new Promise(r => setTimeout(r, 500));
             waited += 500;
           }
         }
         
         // Use cached result if available and matches the latest work order
-        if (carouselAiCache && carouselAiCache.wo === latest.wo) {
-          startTerminalContent(carouselAiCache.summary, null);
+        if (carouselAiCacheEN && carouselAiCacheEN.wo === latest.wo) {
+          startTerminalContent(carouselAiCacheEN.summary, null);
           return;
         }
 
@@ -2818,21 +2836,27 @@
       }
     }
 
-    async function showCarouselAiReport(onDone) {
+    async function showCarouselAiReport(lang, onDone) {
+      let isFetching = lang === 'en' ? carouselAiFetchingEN : carouselAiFetchingZH;
+      let cache = lang === 'en' ? carouselAiCacheEN : carouselAiCacheZH;
+
       // Skip immediately if LLM not connected or no data was prefetched
-      if (!window.llmConnected || (!carouselAiCache && !carouselAiFetching)) {
+      if (!window.llmConnected || (!cache && !isFetching)) {
         if (onDone) onDone();
         return;
       }
       // Wait for background fetch to complete (max 130s — prefetch timeout is 180s, carousel pages take 60s)
       let waited = 0;
-      while (carouselAiFetching && waited < 130000) {
+      while (isFetching && waited < 130000) {
         await new Promise(r => setTimeout(r, 500));
         waited += 500;
+        isFetching = lang === 'en' ? carouselAiFetchingEN : carouselAiFetchingZH;
       }
+      cache = lang === 'en' ? carouselAiCacheEN : carouselAiCacheZH;
+
       // After waiting, re-check LLM status and cache
-      if (!window.llmConnected || !carouselAiCache) { if (onDone) onDone(); return; }
-      const { summary, wo, model, yieldPct } = carouselAiCache;
+      if (!window.llmConnected || !cache) { if (onDone) onDone(); return; }
+      const { summary, wo, model, yieldPct } = cache;
       openTerminalReport(wo, model, yieldPct, summary, onDone);
     }
 
@@ -2847,15 +2871,21 @@
     let _lastSchedTriggerMinute = -1;
 
     function isScheduledHour() {
+      const d = new Date().getDay();
       const h = new Date().getHours();
-      return h >= 8 && h < 20;
+      // Only run Monday to Friday (1-5) and between 08:00 and 18:59 (hours 8-18)
+      return d >= 1 && d <= 5 && h >= 8 && h < 19;
     }
 
     function startScheduledCarousel() {
       if (_schedCarouselInterval) return; // already running
-      carouselAiCache    = null;
-      carouselAiFetching = false;
-      prefetchCarouselAiReport(); // kick off background fetch immediately
+      carouselAiCacheEN    = null;
+      carouselAiCacheZH    = null;
+      carouselAiFetchingEN = false;
+      carouselAiFetchingZH = false;
+      
+      prefetchCarouselAiReport('en'); // kick off background fetch immediately
+      prefetchCarouselAiReport('zh');
 
       _schedCarouselIdx = 0;
       showPage(SCHEDULED_CAROUSEL_PAGES[0]);
@@ -2867,9 +2897,15 @@
         } else {
           // AI Report step — stop interval, hand off to terminal
           clearInterval(_schedCarouselInterval); _schedCarouselInterval = null;
-          showCarouselAiReport(() => {
-            // After terminal closes, scheduled sequence is done
-            _schedCarouselIdx = 0;
+          // Show English first
+          showCarouselAiReport('en', () => {
+            // After EN terminal closes (which auto-closes after 30s), wait a moment then show ZH
+            setTimeout(() => {
+              showCarouselAiReport('zh', () => {
+                // After ZH terminal closes (auto-closes after 30s), scheduled sequence is done
+                _schedCarouselIdx = 0;
+              });
+            }, 500); // short delay between EN closing and ZH opening
           });
         }
       }, SCHEDULED_CAROUSEL_INTERVAL_MS);
