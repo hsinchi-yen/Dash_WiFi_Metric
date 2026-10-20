@@ -14,8 +14,11 @@ import fails from './pages/fails.js';
 import rf from './pages/rf.js';
 import production from './pages/production.js';
 import dbtweak from './pages/dbtweak.js';
+import logupload from './pages/logupload.js';
+import products from './pages/products.js';
+import accounts from './pages/accounts.js';
 
-const PAGES = [overview, workorders, fails, rf, production, dbtweak];
+const PAGES = [overview, workorders, fails, rf, production, logupload, products, dbtweak, accounts];
 const byId = Object.fromEntries(PAGES.map(p => [p.id, p]));
 const IDLE_MS = 5 * 60 * 1000;
 const ROTATE_MS = 30 * 1000;
@@ -263,14 +266,17 @@ function initLanguage() {
     });
 }
 
-/* ─── Signed-in user box (DB Maintenance login) ─── */
+/* ─── Signed-in user box (one sign-in for Log Upload, products, DB Maintenance, accounts) ─── */
 function renderAuthBox(user) {
     $('#authBox').hidden = !user;
     if (user) {
         $('#authName').textContent = t('auth.user', { name: auth.displayName(user) });
         $('#authName').title = auth.displayName(user);
-        $('#authRole').textContent = t('auth.dbLogin');
+        $('#authRole').textContent = auth.isAdmin() ? t('auth.admin') : t('auth.uploader');
+        $('#btnChangePw').hidden = auth.isAdmin();   // the administrator password lives in the server environment
     }
+    // Administrator-only pages stay reachable by address; the menu just does not advertise them.
+    $$('.nav-item[data-admin-only]').forEach(a => { a.hidden = !auth.isAdmin(); });
 }
 
 function renderAuth(user, reason) {
@@ -316,6 +322,7 @@ async function start() {
     PAGES.forEach(p => p.init?.(app));
     auth.onAuthChange(renderAuth);
     $('#btnLogout').addEventListener('click', auth.logout);
+    $('#btnChangePw').addEventListener('click', auth.openChangePassword);
     window.addEventListener('hashchange', () => show(pageFromHash()));
 
     await Promise.all([loadMeta(), loadOptions(), auth.restore()]);

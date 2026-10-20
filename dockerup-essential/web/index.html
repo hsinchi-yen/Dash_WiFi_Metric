@@ -40,13 +40,17 @@
         <a class="nav-item" href="#rf" data-page="rf"><span class="nav-icon">📡</span><span data-i18n="nav.rf"></span></a>
         <a class="nav-item" href="#production" data-page="production"><span class="nav-icon">⚡</span><span data-i18n="nav.production"></span></a>
         <div class="nav-label" data-i18n="nav.groupManage"></div>
+        <a class="nav-item" href="#logupload" data-page="logupload"><span class="nav-icon">📤</span><span data-i18n="nav.logupload"></span></a>
+        <a class="nav-item" href="#products" data-page="products"><span class="nav-icon">🏷️</span><span data-i18n="nav.products"></span></a>
         <a class="nav-item" href="#dbtweak" data-page="dbtweak" title="DB Tweak"><span class="nav-icon">🔧</span><span data-i18n="nav.dbtweak"></span></a>
+        <a class="nav-item" href="#accounts" data-page="accounts" data-admin-only><span class="nav-icon">👥</span><span data-i18n="nav.accounts"></span></a>
     </nav>
     <div class="sidebar-foot">
         <div class="auth-box" id="authBox" hidden>
             <div class="auth-name" id="authName"></div>
             <div class="auth-role" id="authRole"></div>
             <div class="auth-actions">
+                <button class="btn small" type="button" id="btnChangePw" data-i18n="auth.changePwBtn"></button>
                 <button class="btn small" type="button" id="btnLogout" data-i18n="auth.logout"></button>
             </div>
         </div>
@@ -247,6 +251,7 @@
             <button class="btn primary full" type="button" id="btnTwLogin" data-i18n="common.signIn"></button>
             <div class="form-msg" id="twLoginMsg" aria-live="polite"></div>
         </div>
+        <div class="card" id="twDenied" hidden><div class="state-msg" data-i18n="tw.denied"></div></div>
         <div class="stack" id="twPanel" hidden>
             <div class="notice" data-i18n="tw.intro"></div>
             <div class="card">
@@ -268,11 +273,240 @@
                             <th data-i18n="tw.col.id"></th><th data-i18n="fails.col.time"></th><th data-i18n="wo.col.wo"></th><th data-i18n="wo.col.product"></th>
                             <th>SN</th><th data-i18n="fails.col.result"></th><th>WiFi</th><th>BT</th>
                             <th class="num" data-i18n="fails.col.tp24"></th><th class="num" data-i18n="fails.col.tp5"></th>
-                            <th data-i18n="tw.col.source"></th><th data-i18n="tw.col.actions"></th>
+                            <th data-i18n="tw.col.source"></th><th data-i18n="tw.col.upload"></th><th data-i18n="tw.col.actions"></th>
                         </tr></thead>
                         <tbody id="twRows"></tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── Log Upload ─── -->
+    <section class="page" id="page-logupload" hidden>
+        <div class="card login-card" id="luLogin" hidden>
+            <h3 data-i18n="auth.loginTitle"></h3>
+            <p data-i18n="auth.loginDesc"></p>
+            <div class="field"><label for="luUser" data-i18n="common.username"></label><input class="input" id="luUser" autocomplete="username"></div>
+            <div class="field"><label for="luPass" data-i18n="common.password"></label><input class="input" type="password" id="luPass" autocomplete="current-password"></div>
+            <button class="btn primary full" type="button" id="btnLuLogin" data-i18n="common.signIn"></button>
+            <div class="form-msg" id="luLoginMsg" aria-live="polite"></div>
+        </div>
+        <div class="stack" id="luPanel" hidden>
+            <div class="notice" data-i18n="lu.howto"></div>
+            <div class="card">
+                <div class="card-title mb"><span class="lu-num">1</span><span data-i18n="lu.step1"></span></div>
+                <div class="lu-sources">
+                    <div class="drop" id="luDrop" tabindex="0" role="button" data-i18n-aria="lu.dropAria">
+                        <input type="file" id="luFile" accept=".zip,application/zip" hidden>
+                        <div data-i18n="lu.drop"></div>
+                        <div class="muted num" id="luFileInfo" data-i18n="lu.noFile"></div>
+                    </div>
+                    <div class="lu-or">
+                        <input type="file" id="luFolder" webkitdirectory directory multiple hidden>
+                        <button class="btn" type="button" id="btnLuFolder" data-i18n="lu.folder"></button>
+                    </div>
+                </div>
+                <div class="status-line" id="luAnalyzeStatus" aria-live="polite"></div>
+                <div id="luFacts" hidden>
+                    <div class="tiles my" id="luFactGrid"></div>
+                    <div class="notice warn" id="luInferred" hidden></div>
+                    <details id="luIgnoredBox" hidden>
+                        <summary id="luIgnoredSummary"></summary>
+                        <div class="table-wrap mt-s detail-table">
+                            <table>
+                                <thead><tr><th data-i18n="lu.col.file"></th><th data-i18n="lu.col.reason"></th></tr></thead>
+                                <tbody id="luIgnoredRows"></tbody>
+                            </table>
+                        </div>
+                    </details>
+                </div>
+            </div>
+
+            <div class="card" id="luStepConfirm" hidden>
+                <div class="card-title mb"><span class="lu-num">2</span><span data-i18n="lu.step2"></span></div>
+                <div class="toolbar mb">
+                    <strong id="luModeLabel"></strong>
+                    <span class="muted" id="luModeHint"></span>
+                    <span class="spacer"></span>
+                    <button class="btn small" type="button" id="btnLuMode" hidden></button>
+                </div>
+                <div id="luChatPanel" hidden>
+                    <div class="chat">
+                        <div class="chat-log" id="luChatLog" aria-live="polite"></div>
+                        <div class="chips chat-chips" id="luChips" hidden></div>
+                        <div class="chat-input">
+                            <input class="input" id="luChatInput" maxlength="500" autocomplete="off" data-i18n-placeholder="lu.chatPh">
+                            <button class="btn primary" type="button" id="btnLuChatSend" data-i18n="lu.send"></button>
+                        </div>
+                    </div>
+                    <div class="muted num my" id="luExtract"></div>
+                </div>
+                <div class="form-grid" id="luFormPanel">
+                    <div class="field">
+                        <label for="luProduct"><span data-i18n="lu.product"></span> *</label>
+                        <select class="select" id="luProduct"></select>
+                        <input class="input" id="luProductNew" autocomplete="off" spellcheck="false" data-i18n-placeholder="lu.productNewPh" hidden>
+                    </div>
+                    <div class="field"><label for="luWo"><span data-i18n="lu.wo"></span> *</label><input class="input" id="luWo" autocomplete="off" spellcheck="false"><div class="field-hint" data-i18n="lu.woHint"></div></div>
+                    <div class="field"><label for="luQty"><span data-i18n="lu.qty"></span> *</label><input class="input" id="luQty" inputmode="numeric" autocomplete="off" data-i18n-placeholder="lu.qtyPh"></div>
+                </div>
+                <ul class="issues" id="luIssues" aria-live="polite"></ul>
+                <div id="luAlign" hidden>
+                    <div class="muted small-text mb-s" data-i18n="lu.align"></div>
+                    <div class="tiles mb" id="luAlignGrid"></div>
+                </div>
+                <label class="ack" id="luAckRow" hidden><input type="checkbox" id="luAck"> <span data-i18n="lu.ack"></span></label>
+                <div class="toolbar">
+                    <button class="btn primary" type="button" id="btnLuUpload" data-i18n="lu.upload" disabled></button>
+                    <button class="btn" type="button" id="btnLuReset" data-i18n="lu.reset"></button>
+                </div>
+            </div>
+
+            <div class="card" id="luStepProgress" hidden>
+                <div class="card-title mb"><span class="lu-num">3</span><span data-i18n="lu.step3"></span></div>
+                <div class="progress"><div id="luProgressFill"></div></div>
+                <div class="toolbar">
+                    <div class="status-line" id="luProgressText" aria-live="polite"></div>
+                    <span class="spacer"></span>
+                    <button class="btn small danger" type="button" id="btnLuCancel" data-i18n="lu.cancel" hidden></button>
+                </div>
+                <div class="tiles mt" id="luResultGrid" hidden></div>
+                <div class="muted small-text mt-s" id="luResultNote"></div>
+                <details id="luFailureBox" hidden>
+                    <summary id="luFailureSummary"></summary>
+                    <div class="table-wrap mt-s detail-table">
+                        <table>
+                            <thead><tr><th data-i18n="lu.col.file"></th><th data-i18n="lu.col.error"></th></tr></thead>
+                            <tbody id="luFailureRows"></tbody>
+                        </table>
+                    </div>
+                </details>
+                <div class="toolbar mt" id="luItemsRow" hidden>
+                    <button class="btn small" type="button" id="btnLuItemsCsv" data-i18n="lu.items.csv"></button>
+                    <button class="btn small" type="button" id="btnLuItemsTxt" data-i18n="lu.items.txt"></button>
+                </div>
+                <div class="toolbar mt">
+                    <button class="btn" type="button" id="btnLuNext" data-i18n="lu.next" hidden></button>
+                    <button class="btn danger" type="button" id="btnLuRevert" data-i18n="lu.revert" hidden></button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="toolbar mb">
+                    <div class="card-title" id="luHistoryTitle"></div>
+                    <span class="spacer"></span>
+                    <label class="muted" for="luHistoryUser" id="luHistoryFilterLabel" data-i18n="lu.uploader" hidden></label>
+                    <select class="select" id="luHistoryUser" hidden></select>
+                    <button class="btn small" type="button" id="btnLuHistoryRefresh" data-i18n="lu.refresh"></button>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr>
+                            <th data-i18n="lu.col.time2"></th><th data-i18n="wo.col.wo"></th><th data-i18n="wo.col.product"></th><th class="num" data-i18n="lu.col.planned"></th>
+                            <th data-i18n="lu.col.source"></th><th class="num" data-i18n="lu.col.new"></th><th class="num" data-i18n="lu.col.skip"></th>
+                            <th class="num" data-i18n="lu.col.fail"></th><th data-i18n="lu.col.status"></th><th data-i18n="lu.uploader"></th><th></th>
+                        </tr></thead>
+                        <tbody id="luHistoryRows"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── Product registry ─── -->
+    <section class="page" id="page-products" hidden>
+        <div class="card login-card" id="prodLogin" hidden>
+            <h3 data-i18n="auth.loginTitle"></h3>
+            <p data-i18n="auth.loginDesc"></p>
+            <div class="field"><label for="prodUser" data-i18n="common.username"></label><input class="input" id="prodUser" autocomplete="username"></div>
+            <div class="field"><label for="prodPass" data-i18n="common.password"></label><input class="input" type="password" id="prodPass" autocomplete="current-password"></div>
+            <button class="btn primary full" type="button" id="btnProdLogin" data-i18n="common.signIn"></button>
+            <div class="form-msg" id="prodLoginMsg" aria-live="polite"></div>
+        </div>
+        <div class="stack" id="prodPanel" hidden>
+            <div class="notice" data-i18n="prod.intro"></div>
+            <div class="card">
+                <div class="toolbar mb">
+                    <label class="muted" for="prodCheck" data-i18n="prod.check"></label>
+                    <input class="input prod-check" id="prodCheck" autocomplete="off" spellcheck="false" data-i18n-placeholder="prod.checkPh">
+                    <span class="spacer"></span>
+                    <button class="btn small" type="button" id="btnProdReload" data-i18n="fresh.refresh"></button>
+                    <button class="btn primary" type="button" id="btnProdNew" data-i18n="prod.new"></button>
+                </div>
+                <div class="status-line" id="prodCheckResult" aria-live="polite"></div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr>
+                            <th data-i18n="prod.col.name"></th><th class="num" data-i18n="prod.col.tn"></th><th class="num" data-i18n="prod.col.units"></th>
+                            <th class="num" data-i18n="prod.col.wos"></th><th data-i18n="prod.col.last"></th><th data-i18n="prod.col.status"></th>
+                            <th data-i18n="prod.col.source"></th><th data-i18n="prod.col.note"></th><th data-i18n="prod.col.ops"></th>
+                        </tr></thead>
+                        <tbody id="prodRows"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── Accounts (administrator) ─── -->
+    <section class="page" id="page-accounts" hidden>
+        <div class="card" id="acctDenied" hidden><div class="state-msg" data-i18n="acct.denied"></div></div>
+        <div class="stack" id="acctPanel" hidden>
+            <div class="toolbar mb">
+                <div class="tabs" role="tablist">
+                    <button class="tab" role="tab" type="button" data-acct-tab="users" aria-selected="true" data-i18n="acct.tabUsers"></button>
+                    <button class="tab" role="tab" type="button" data-acct-tab="audit" aria-selected="false" data-i18n="acct.tabAudit"></button>
+                    <button class="tab" role="tab" type="button" data-acct-tab="logins" aria-selected="false" data-i18n="acct.tabLogins"></button>
+                </div>
+                <span class="spacer"></span>
+                <button class="btn primary" type="button" id="btnAcctNew" data-i18n="acct.new"></button>
+            </div>
+            <div data-acct-view="users">
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr>
+                            <th data-i18n="acct.col.user"></th><th data-i18n="acct.col.name"></th><th data-i18n="acct.col.dept"></th>
+                            <th data-i18n="acct.col.email"></th><th data-i18n="acct.col.state"></th><th class="num" data-i18n="acct.col.uploads"></th>
+                            <th class="num" data-i18n="acct.col.rows"></th><th class="num" data-i18n="acct.col.reverted"></th>
+                            <th data-i18n="acct.col.lastUpload"></th><th data-i18n="acct.col.lastLogin"></th><th data-i18n="acct.col.ops"></th>
+                        </tr></thead>
+                        <tbody id="acctUserRows"></tbody>
+                    </table>
+                </div>
+                <p class="muted mt-s small-text" data-i18n="acct.note"></p>
+            </div>
+            <div data-acct-view="audit" hidden>
+                <div class="toolbar mb">
+                    <label class="muted" for="acctAuditUser" data-i18n="acct.filterUser"></label>
+                    <select class="select" id="acctAuditUser"></select>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th data-i18n="acct.col.time"></th><th data-i18n="acct.col.actor"></th><th data-i18n="acct.col.action"></th><th data-i18n="acct.col.target"></th><th data-i18n="acct.col.detail"></th><th data-i18n="acct.col.ip"></th></tr></thead>
+                        <tbody id="acctAuditRows"></tbody>
+                    </table>
+                </div>
+                <div class="pager" id="acctAuditPager"></div>
+            </div>
+            <div data-acct-view="logins" hidden>
+                <div class="toolbar mb">
+                    <label class="muted" for="acctLoginUser" data-i18n="acct.filterUser"></label>
+                    <select class="select" id="acctLoginUser"></select>
+                    <label class="muted" for="acctLoginResult" data-i18n="acct.filterResult"></label>
+                    <select class="select" id="acctLoginResult">
+                        <option value="" data-i18n="common.all"></option>
+                        <option value="true" data-i18n="common.success"></option>
+                        <option value="false" data-i18n="common.failed"></option>
+                    </select>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th data-i18n="acct.col.time"></th><th data-i18n="acct.col.user"></th><th data-i18n="acct.col.event"></th><th data-i18n="acct.col.result"></th><th data-i18n="acct.col.reason"></th><th data-i18n="acct.col.ip"></th><th data-i18n="acct.col.agent"></th></tr></thead>
+                        <tbody id="acctLoginRows"></tbody>
+                    </table>
+                </div>
+                <div class="pager" id="acctLoginPager"></div>
             </div>
         </div>
     </section>

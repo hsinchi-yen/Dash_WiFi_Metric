@@ -1,92 +1,36 @@
-"""DB Tweak: the user signs in with their own PostgreSQL login (sent with every request);
-queries run as that login. Unchanged behaviour; the account system will replace the
-per-request credentials with a session token."""
+"""DB Maintenance (DB Tweak): browse and delete test records — administrator session only.
+
+Replaces the per-request PostgreSQL credentials of the previous version; queries run through the
+API's pool, deletes are written to account_audit, and the statistics view refreshes after a delete.
+"""
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel, Field
 
 import db
 from errors import ApiError, Msg
-from services import stats
+from services import auth, stats
 from services.logfiles import resolve_downloadable_log_path
 
-router = APIRouter(prefix="/api/db-tweak", tags=["db-tweak"])
+router = APIRouter(prefix="/api/db-tweak", tags=["db-tweak"], dependencies=[Depends(auth.require_admin)])
 
 
-class DbLoginRequest(BaseModel):
-    username: str = Field(min_length=1, max_length=128)
-    password: str = Field(min_length=1, max_length=256)
+def _product_where(product_model: Optional[str], where: str, params: list) -> str:
+    if product_model and product_model not in ("ALL", "N/A"):
+        params.append(product_model)
+        return where + (" AND" if where else "WHERE") + " product_model = %s"
+    if product_model == "N/A":
+        return where + (" AND" if where else "WHERE") + " (product_model IS NULL OR product_model = '')"
+    return where
 
 
-class DbRecordListRequest(DbLoginRequest):
-    work_order: Optional[str] = None
-    product_model: Optional[str] = None
-    limit: int = Field(default=500, ge=1, le=2000)
-
-
-class DbWorkOrderListRequest(DbLoginRequest):
-    product_model: Optional[str] = None
-
-
-class DbDeleteRecordRequest(DbLoginRequest):
-    id: int = Field(ge=1)
-
-
-class DbDeleteWorkOrderRequest(DbLoginRequest):
-    work_order: str = Field(min_length=1, max_length=256)
-
-
-class DbDownloadRecordLogRequest(DbLoginRequest):
-    id: int = Field(ge=1)
-
-
-def _rows_as(req: DbLoginRequest, sql: str, params: tuple = ()) -> list[dict[str, Any]]:
-    try:
-        conn = db.connect_as(req.username, req.password)
-    except Exception as exc:
-        raise ApiError(401, Msg(f"PostgreSQL 登入失敗：{exc}", f"PostgreSQL login failed: {exc}"), "unauthorized") from exc
-    try:
-        return db.jsonable(db.fetch_all(conn, sql, params))
-    except Exception as exc:
-        raise ApiError(401, Msg(f"PostgreSQL 查詢失敗：{exc}", f"PostgreSQL login failed: {exc}"), "unauthorized") from exc
-    finally:
-        conn.close()
-
-
-def _delete_as(req: DbLoginRequest, sql: str, params: tuple = ()) -> int:
-    try:
-        conn = db.connect_as(req.username, req.password)
-    except Exception as exc:
-        raise ApiError(401, Msg(f"刪除失敗：{exc}", f"Delete failed: {exc}"), "unauthorized") from exc
-    try:
-        deleted = db.execute(conn, sql, params)
-        conn.commit()
-        return int(deleted or 0)
-    except Exception as exc:
-        conn.rollback()
-        raise ApiError(401, Msg(f"刪除失敗：{exc}", f"Delete failed: {exc}"), "unauthorized") from exc
-    finally:
-        conn.close()
-
-
-@router.post("/login")
-def login(req: DbLoginRequest) -> dict[str, Any]:
-    rows = _rows_as(req, "SELECT current_user AS db_user, current_database() AS db_name")
-    row = rows[0] if rows else {}
-    return {"ok": True, "db_user": row.get("db_user"), "db_name": row.get("db_name")}
-
-
-@router.post("/workorders")
-def work_orders(req: DbWorkOrderListRequest) -> dict[str, Any]:
-    where, params = "", []
-    if req.product_model and req.product_model not in ("ALL", "N/A"):
-        where, params = "WHERE product_model = %s", [req.product_model]
-    elif req.product_model == "N/A":
-        where = "WHERE product_model IS NULL OR product_model = ''"
-    rows = _rows_as(req, f"""
+@router.get("/workorders")
+def work_orders(product_model: Optional[str] = None) -> dict[str, Any]:
+    params: list = []
+    where = _product_where(product_model, "", params)
+    rows = db.rows(f"""
     SELECT
       COALESCE(NULLIF(work_order, ''), 'N/A') AS work_order,
       COALESCE(NULLIF(product_model, ''), 'N/A') AS product_model,
@@ -103,9 +47,9 @@ def work_orders(req: DbWorkOrderListRequest) -> dict[str, Any]:
     return {"items": rows, "count": len(rows)}
 
 
-@router.post("/products")
-def products(req: DbLoginRequest) -> dict[str, Any]:
-    rows = _rows_as(req, """
+@router.get("/products")
+def products_list() -> dict[str, Any]:
+    rows = db.rows("""
     SELECT COALESCE(NULLIF(product_model, ''), 'N/A') AS product_model, COUNT(*) AS total, MAX(test_time) AS last_test
     FROM test_record
     GROUP BY COALESCE(NULLIF(product_model, ''), 'N/A')
@@ -114,19 +58,16 @@ def products(req: DbLoginRequest) -> dict[str, Any]:
     return {"items": rows, "count": len(rows)}
 
 
-@router.post("/records")
-def records(req: DbRecordListRequest) -> dict[str, Any]:
+@router.get("/records")
+def records(work_order: Optional[str] = None, product_model: Optional[str] = None,
+            limit: int = Query(500, ge=1, le=2000)) -> dict[str, Any]:
     where, params = "", []
-    if req.work_order and req.work_order not in ("ALL", "N/A"):
-        where, params = "WHERE work_order = %s", [req.work_order]
-    elif req.work_order == "N/A":
+    if work_order and work_order not in ("ALL", "N/A"):
+        where, params = "WHERE work_order = %s", [work_order]
+    elif work_order == "N/A":
         where = "WHERE work_order IS NULL OR work_order = ''"
-    if req.product_model and req.product_model not in ("ALL", "N/A"):
-        where += (" AND" if where else "WHERE") + " product_model = %s"
-        params.append(req.product_model)
-    elif req.product_model == "N/A":
-        where += (" AND" if where else "WHERE") + " (product_model IS NULL OR product_model = '')"
-    rows = _rows_as(req, f"""
+    where = _product_where(product_model, where, params)
+    rows = db.rows(f"""
     SELECT
       id, test_time, COALESCE(NULLIF(work_order, ''), 'N/A') AS work_order, product_model, sn, result,
       CASE
@@ -134,45 +75,51 @@ def records(req: DbRecordListRequest) -> dict[str, Any]:
         WHEN band_result_24g IS TRUE OR band_result_5g IS TRUE THEN TRUE
         ELSE NULL
       END AS wifi_result,
-      bt_result, avg_24g, avg_5g, source_file
+      bt_result, avg_24g, avg_5g, source_file, upload_id
     FROM test_record
     {where}
     ORDER BY test_time DESC, id DESC
     LIMIT %s
-    """, (*params, req.limit))
-    return {"items": rows, "count": len(rows), "work_order": req.work_order or "ALL",
-            "product_model": req.product_model or "ALL"}
+    """, (*params, limit))
+    return {"items": rows, "count": len(rows), "work_order": work_order or "ALL", "product_model": product_model or "ALL"}
 
 
-@router.post("/delete-record")
-def delete_record(req: DbDeleteRecordRequest) -> dict[str, Any]:
-    deleted = _delete_as(req, "DELETE FROM test_record WHERE id = %s", (req.id,))
+@router.delete("/records/{record_id}")
+def delete_record(record_id: int, request: Request, admin=Depends(auth.require_admin)) -> dict[str, Any]:
+    with db.db() as conn:
+        row = db.fetch_one(conn, "SELECT sn, work_order, product_model FROM test_record WHERE id = %s", (record_id,))
+        deleted = db.execute(conn, "DELETE FROM test_record WHERE id = %s", (record_id,))
+        if deleted:
+            auth.audit(conn, request, admin["username"], "delete_record", str(record_id), row)
     if deleted:
         stats.refresh(wait=False)
-    return {"deleted": deleted, "id": req.id}
+    return {"deleted": deleted, "id": record_id}
 
 
-@router.post("/delete-workorder")
-def delete_work_order(req: DbDeleteWorkOrderRequest) -> dict[str, Any]:
-    if req.work_order == "N/A":
-        deleted = _delete_as(req, "DELETE FROM test_record WHERE work_order IS NULL OR work_order = ''")
-    else:
-        deleted = _delete_as(req, "DELETE FROM test_record WHERE work_order = %s", (req.work_order,))
+@router.delete("/workorders/{work_order}")
+def delete_work_order(work_order: str, request: Request, admin=Depends(auth.require_admin)) -> dict[str, Any]:
+    with db.db() as conn:
+        if work_order == "N/A":
+            deleted = db.execute(conn, "DELETE FROM test_record WHERE work_order IS NULL OR work_order = ''")
+        else:
+            deleted = db.execute(conn, "DELETE FROM test_record WHERE work_order = %s", (work_order,))
+        if deleted:
+            auth.audit(conn, request, admin["username"], "delete_work_order", work_order, {"deleted": deleted})
     if deleted:
         stats.refresh(wait=False)
-    return {"deleted": deleted, "work_order": req.work_order}
+    return {"deleted": deleted, "work_order": work_order}
 
 
-@router.post("/download-record-log")
-def download_record_log(req: DbDownloadRecordLogRequest):
-    rows = _rows_as(req, "SELECT source_file, raw_log FROM test_record WHERE id = %s LIMIT 1", (req.id,))
-    if not rows:
-        raise ApiError(404, Msg(f"找不到資料：id={req.id}", f"Record not found: id={req.id}"), "not_found")
-    source_file, raw_log = rows[0].get("source_file"), rows[0].get("raw_log")
+@router.get("/records/{record_id}/log")
+def download_record_log(record_id: int):
+    with db.db() as conn:
+        row = db.fetch_one(conn, "SELECT source_file, raw_log FROM test_record WHERE id = %s LIMIT 1", (record_id,))
+    if not row:
+        raise ApiError(404, Msg(f"找不到資料：id={record_id}", f"Record not found: id={record_id}"), "not_found")
+    source_file, raw_log = row.get("source_file"), row.get("raw_log")
     if not source_file and not raw_log:
         raise ApiError(404, Msg("此筆資料沒有 log", "No log data for this record"), "not_found")
-
-    filename = Path(str(source_file or f"log_{req.id}.txt").replace("\\", "/")).name
+    filename = Path(str(source_file or f"log_{record_id}.txt").replace("\\", "/")).name
     if source_file:
         try:
             file_path = resolve_downloadable_log_path(str(source_file))

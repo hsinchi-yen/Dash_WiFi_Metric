@@ -1,8 +1,10 @@
 """
 WiFi YFP Dashboard — FastAPI entry point.
 
-    routers/   HTTP endpoints, one module per area (analytics, admin, tweak, reports, system)
-    services/  queries and business logic (mv_unit statistics, filters, LLM, scheduler, migrations)
+    routers/   HTTP endpoints, one module per area (analytics, reports, system, auth, accounts,
+               products, upload, tweak, maintenance)
+    services/  queries and business logic (mv_unit statistics, filters, LLM, scheduler, migrations,
+               sessions, product registry, web upload rules/ingest, upload AI chat)
     db.py      connection pool;  config.py  settings;  errors.py  {"error", "code", "detail"} responses
 
 Shared with the desktop tool (one directory up): log_parser.py. The single-file dashboard
@@ -26,7 +28,7 @@ from fastapi.responses import FileResponse  # noqa: E402
 import config  # noqa: E402
 import db  # noqa: E402
 import errors  # noqa: E402
-from routers import admin, analytics, reports, system, tweak  # noqa: E402
+from routers import accounts, analytics, auth, maintenance, products, reports, system, tweak, upload  # noqa: E402
 from services import migrations, scheduler  # noqa: E402
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -39,6 +41,8 @@ async def lifespan(_app: FastAPI):
     migrations.run()
     if os.environ.get("WIFI_DISABLE_SCHEDULER") != "1":
         scheduler.start()
+    if not (config.TWEAK_USER and config.TWEAK_PASS):
+        log.warning("TWEAK_USER / TWEAK_PASS not set: nobody can sign in as administrator")
     log.info("WiFi Dashboard API %s ready", config.APP_VERSION)
     yield
     scheduler.stop()
@@ -74,7 +78,7 @@ async def timing(request: Request, call_next):
     return response
 
 
-for module in (system, analytics, admin, tweak, reports):
+for module in (system, analytics, reports, auth, accounts, products, upload, tweak, maintenance):
     app.include_router(module.router)
 
 

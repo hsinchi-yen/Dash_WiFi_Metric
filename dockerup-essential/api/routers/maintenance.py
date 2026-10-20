@@ -1,5 +1,5 @@
 """Administrator-only maintenance: batch ingest from a folder inside the container and the
-one-off metadata backfill. Both need X-Admin-Token (auth.require_admin)."""
+one-off metadata backfill. Both need an administrator session (services.auth.require_admin)."""
 from pathlib import Path
 from typing import Any
 
@@ -7,11 +7,11 @@ from fastapi import APIRouter, Depends, Query
 
 import db
 import log_parser
-from auth import require_admin
 from errors import bad_request, Msg
 from services import stats
+from services.auth import require_admin
 
-router = APIRouter(tags=["admin"], dependencies=[Depends(require_admin)])
+router = APIRouter(tags=["maintenance"], dependencies=[Depends(require_admin)])
 
 GENERIC_PARENT_DIRS = ("downloads", "desktop", "documents", "logs", "tmp", "temp")
 WARNING_KEYS = ("warn_missing_tp_24g", "warn_missing_tp_5g", "warn_missing_result_24g",

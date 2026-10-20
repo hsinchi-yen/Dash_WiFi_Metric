@@ -1,34 +1,22 @@
-// DB Maintenance (DB Tweak): browse and delete records with the user's own PostgreSQL login.
-// Same API as the previous dashboard (/api/db-tweak/*, credentials in the request body); the
-// account system will replace the login with roles.
-import { apiPost } from '../core/api.js';
+// DB Maintenance (DB Tweak): browse and delete records — administrator session only.
+// /api/db-tweak/* with the session token (no PostgreSQL credentials in the browser any more).
+import { apiDelete, apiGet, download } from '../core/api.js';
 import * as auth from '../core/auth.js';
 import { esc, fmtDateTime, fmtInt, fmtNum } from '../core/format.js';
 import { t } from '../core/i18n.js';
 import { $, tableState, toast } from '../core/ui.js';
 
-const COLS = 12;
+const COLS = 13;
 let seq = 0;
 let appRef;
 let workOrders = [];
 
-function body(extra = {}) {
-    return { ...auth.credentials(), ...extra };
-}
-
-async function call(path, extra) {
-    try {
-        return await apiPost(path, body(extra));
-    } catch (err) {
-        if (err.status === 401 && auth.isSignedIn()) auth.expire();
-        throw err;
-    }
-}
-
 function renderAccess() {
     const signedIn = auth.isSignedIn();
+    const admin = auth.isAdmin();
     $('#twLogin').hidden = signedIn;
-    $('#twPanel').hidden = !signedIn;
+    $('#twDenied').hidden = !signedIn || admin;
+    $('#twPanel').hidden = !admin;
 }
 
 function fill(select, items, value, allLabel) {
@@ -39,9 +27,10 @@ function fill(select, items, value, allLabel) {
 }
 
 async function loadFilters() {
+    const pm = $('#twProduct').value || 'ALL';
     const [wos, products] = await Promise.all([
-        call('/api/db-tweak/workorders', { product_model: $('#twProduct').value || 'ALL' }),
-        call('/api/db-tweak/products'),
+        apiGet(`/api/db-tweak/workorders?product_model=${encodeURIComponent(pm)}`),
+        apiGet('/api/db-tweak/products'),
     ]);
     workOrders = wos.items;
     fill($('#twProduct'), products.items.map(p => p.product_model), $('#twProduct').value, t('filter.allProducts'));
@@ -59,9 +48,8 @@ async function loadRecords() {
     const tbody = $('#twRows');
     tableState(tbody, COLS, 'loading');
     try {
-        const data = await call('/api/db-tweak/records', {
-            work_order: $('#twWo').value, product_model: $('#twProduct').value, limit: Number($('#twLimit').value),
-        });
+        const p = new URLSearchParams({ work_order: $('#twWo').value, product_model: $('#twProduct').value, limit: $('#twLimit').value });
+        const data = await apiGet(`/api/db-tweak/records?${p}`);
         if (mine !== seq) return;
         $('#twCount').textContent = t('tw.count', { n: fmtInt(data.count) });
         if (!data.items.length) { tableState(tbody, COLS, 'empty'); return; }
@@ -77,6 +65,7 @@ async function loadRecords() {
             <td class="num">${fmtNum(r.avg_24g, 1)}</td>
             <td class="num">${fmtNum(r.avg_5g, 1)}</td>
             <td class="truncate" title="${esc(r.source_file || '')}">${esc(r.source_file || '—')}</td>
+            <td class="nowrap muted" title="${esc(r.upload_id || '')}">${r.upload_id ? `<code>${esc(r.upload_id.slice(0, 8))}</code>` : '—'}</td>
             <td class="nowrap">
                 <button class="btn small" type="button" data-log="${r.id}">${esc(t('fails.download'))}</button>
                 <button class="btn small" type="button" data-del="${r.id}" data-sn="${esc(r.sn)}">${esc(t('tw.deleteOne'))}</button>
@@ -87,30 +76,9 @@ async function loadRecords() {
     }
 }
 
-async function downloadLog(id) {
-    const res = await fetch('/api/db-tweak/download-record-log', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body({ id: Number(id) })),
-    });
-    if (!res.ok) {
-        let msg = `HTTP ${res.status}`;
-        try { const d = await res.json(); msg = d.error_en && document.documentElement.lang === 'en' ? d.error_en : (d.error || d.detail || msg); } catch { /* not JSON */ }
-        throw new Error(msg);
-    }
-    const blob = await res.blob();
-    const m = /filename="?([^";]+)"?/.exec(res.headers.get('Content-Disposition') || '');
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = m ? m[1] : `record_${id}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 async function load() {
     renderAccess();
-    if (!auth.isSignedIn()) return;
+    if (!auth.isAdmin()) return;
     try {
         await loadFilters();
     } catch (err) {
@@ -130,13 +98,13 @@ function init(app) {
     $('#twRows').addEventListener('click', async e => {
         const logBtn = e.target.closest('[data-log]');
         if (logBtn) {
-            try { await downloadLog(logBtn.dataset.log); } catch (err) { toast(err.message, 'bad'); }
+            try { await download(`/api/db-tweak/records/${logBtn.dataset.log}/log`, `record_${logBtn.dataset.log}.txt`); } catch (err) { toast(err.message, 'bad'); }
             return;
         }
         const delBtn = e.target.closest('[data-del]');
         if (!delBtn || !confirm(t('tw.deleteOneConfirm', { id: delBtn.dataset.del, sn: delBtn.dataset.sn }))) return;
         try {
-            const res = await call('/api/db-tweak/delete-record', { id: Number(delBtn.dataset.del) });
+            const res = await apiDelete(`/api/db-tweak/records/${delBtn.dataset.del}`);
             toast(t('tw.deleted', { n: fmtInt(res.deleted) }));
             await Promise.all([loadRecords(), appRef.refreshOptions()]);
         } catch (err) { toast(err.message, 'bad'); }
@@ -147,7 +115,7 @@ function init(app) {
         const row = workOrders.find(w => w.work_order === wo);
         if (!confirm(t('tw.deleteWoConfirm', { wo, n: fmtInt(row?.total || 0) }))) return;
         try {
-            const res = await call('/api/db-tweak/delete-workorder', { work_order: wo });
+            const res = await apiDelete(`/api/db-tweak/workorders/${encodeURIComponent(wo)}`);
             toast(t('tw.deleted', { n: fmtInt(res.deleted) }));
             $('#twWo').value = 'ALL';
             await load();

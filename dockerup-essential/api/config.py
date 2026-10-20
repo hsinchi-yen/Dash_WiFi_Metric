@@ -8,9 +8,24 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 DB_POOL_MAX = int(os.environ.get("DB_POOL_MAX", "6"))          # per uvicorn worker
 SLOW_QUERY_MS = int(os.environ.get("SLOW_QUERY_MS", "500"))
 
-# Interim administrator guard for /api/ingest and /api/admin/* (X-Admin-Token header).
-# Unset = those endpoints are disabled. Replaced by accounts in a later phase.
-ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "").strip()
+# Accounts. The administrator is the one TWEAK_USER / TWEAK_PASS pair from the environment (no
+# default: unset = nobody can sign in as administrator); uploader accounts live in app_users.
+TWEAK_USER = os.environ.get("TWEAK_USER", "").strip()
+TWEAK_PASS = os.environ.get("TWEAK_PASS", "")
+SESSION_TTL_HOURS = float(os.environ.get("SESSION_TTL_HOURS", "8"))
+
+# Log upload (web): temp files, size limits, zip safety
+UPLOAD_TMP_DIR = os.environ.get("UPLOAD_TMP_DIR", "/tmp/wifi_uploads")
+UPLOAD_TTL_SEC = int(os.environ.get("UPLOAD_TTL_SEC", "3600"))
+UPLOAD_MAX_UPLOAD_BYTES = 512 * 1024 * 1024      # one zip / one folder batch
+UPLOAD_MAX_EXTRACT_BYTES = 1024 * 1024 * 1024    # everything extracted, per upload
+UPLOAD_MAX_FILES = 20000
+UPLOAD_MAX_ZIP_RATIO = 50                        # uncompressed / compressed, per archive
+UPLOAD_ZIP_DEPTH = 2                             # zip inside a zip inside the upload
+UPLOAD_BATCH_MAX_FILES = 500                     # folder mode: files per request (Starlette caps at 1000)
+PLAN_QTY_MAX = 99999
+PLAN_QTY_WARN = 10000
+LLM_CHAT_TIMEOUT = 60                            # per assistant call; the uploader falls back to the form
 
 # Local LLM (llama.cpp, OpenAI-compatible). Defaults keep the pre-refactor behaviour.
 LLM_API_BASE = os.environ.get("LLM_API_BASE", "http://10.20.30.23:8000/v1")
@@ -47,3 +62,4 @@ YIELD_WARN = 95.0          # ≥ amber, below → red
 MIGRATION_LOCK_KEY = 7361001
 STATS_REFRESH_LOCK_KEY = 7361002
 REPORT_WORKER_LOCK_KEY = 7361003   # one report generation at a time across workers
+UPLOAD_LOCK_KEY = 7361004          # one web upload commit at a time

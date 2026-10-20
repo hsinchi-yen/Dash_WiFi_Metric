@@ -157,8 +157,20 @@ def overview(date_from, date_to, work_order, product_model) -> dict[str, Any]:
         "trend": trend(window, work_order, product_model) if s["total"] else {"unit": "day", "points": []},
         "monthly": monthly(year, work_order, product_model),
         "throughput": throughput_bands(window, work_order, product_model),
-        "plan": None,   # planned quantity vs tested: added with the uploader (wo_plan)
+        "plan": plan_status(work_order, s["total"]),
     }
+
+
+def plan_status(work_order, tested) -> Optional[dict[str, Any]]:
+    """Planned quantity (wo_plan, set by the web uploader) vs units tested, for one work order."""
+    if not work_order:
+        return None
+    rows = db.rows("SELECT planned_qty, updated_by, updated_at FROM wo_plan WHERE work_order = %s", (work_order,))
+    if not rows:
+        return None
+    planned = int(rows[0]["planned_qty"])
+    return {"planned": planned, "tested": int(tested or 0), "gap": int(tested or 0) - planned,
+            "updated_by": rows[0]["updated_by"], "updated_at": rows[0]["updated_at"]}
 
 
 # ─── Work orders ─────────────────────────────────────────────────────────────
