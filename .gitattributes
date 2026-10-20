@@ -1,0 +1,24 @@
+# Store every text file with LF; check out LF on every platform (the Windows desktop tools
+# and editors created CRLF noise that hid real diffs). Windows batch files keep CRLF.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.zip binary
+*.gz binary
+*.dump binary
+*.exe binary
+*.dll binary
+*.pyd binary
+*.pyz binary
+*.pkg binary
+*.pdf binary
