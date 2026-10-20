@@ -213,10 +213,15 @@ def verify_extract(text: str, data: Optional[dict], registry: products.Registry)
             row = next((r for r in registry.rows if r["canonical"] == choice), None)
             if row:
                 key_text = products.match_key(text)
-                model_key = products.match_key(choice.split("_", 1)[1]) if "_" in choice else ""
-                if (row.get("tn_number") is not None and re.search(rf"(?<!\d){row['tn_number']}(?!\d)", key_text)) \
-                        or (model_key and len(model_key) >= 4 and model_key in key_text):
+                model = choice.split("_", 1)[1] if "_" in choice else ""
+                model_key = products.match_key(model)
+                if row.get("tn_number") is not None and re.search(rf"(?<!\d){row['tn_number']}(?!\d)", key_text):
                     out["product_text"] = choice
+                elif model_key and len(model_key) >= 4 and model_key in key_text:
+                    # The model name alone ("PICO IMX6") picks the product only when no other product's name
+                    # contains it (TN-111_PICO-IMX6UL-EMMC does); otherwise the rules list the candidates.
+                    owners = [r for r in registry.rows if model_key in r["match_key"]]
+                    out["product_text"] = choice if len(owners) == 1 else model
 
     # planned quantity: verbatim numbers (minus work orders); a converted value only when the text has no digits
     rest = rules.WO_SEARCH_RE.sub(" ", norm)

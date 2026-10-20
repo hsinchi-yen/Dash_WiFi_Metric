@@ -299,6 +299,8 @@ export default {
     'lu.reason.symlink': '符號連結',
     'lu.reason.limit': '超過大小 / 數量上限',
     'lu.reason.bad_zip': '損壞的 zip',
+    'lu.reason.bad_log_date': 'log 檔名的日期/時間不存在',
+    'lu.reason.empty_log': '空白 log（沒有測試內容）',
     'lu.step2': '確認產品、工單號與計畫測試數量',
     'lu.modeChat': '🤖 AI 助理',
     'lu.modeForm': '📝 表單',

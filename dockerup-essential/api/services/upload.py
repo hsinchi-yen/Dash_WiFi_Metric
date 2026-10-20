@@ -110,6 +110,11 @@ def _manifest_path(upload_id: str) -> str:
     return os.path.join(upload_dir(upload_id), "manifest.json")
 
 
+def manifest_exists(upload_id: str) -> bool:
+    """False once the temp files are gone (TTL clean-up, server restart without the volume)."""
+    return os.path.isfile(_manifest_path(upload_id))
+
+
 def load_manifest(upload_id: str) -> dict:
     try:
         with open(_manifest_path(upload_id), encoding="utf-8") as f:
@@ -172,6 +177,11 @@ class Receiver:
         if not LOG_NAME_RE.fullmatch(base):
             self._ignore(display, "not_log_name", size_hint)
             return
+        try:
+            meta = log_parser.parse_filename(base) or {}
+        except ValueError:          # the right shape, but no such date/time (20261340_250000_…)
+            self._ignore(display, "bad_log_date", size_hint)
+            return
         if not self._check_limits(size_hint):
             self._ignore(display, "limit", size_hint)
             return
@@ -181,6 +191,7 @@ class Receiver:
         path = os.path.join(folder, base)
         digest = hashlib.sha256()
         size = 0
+        has_content = False
         with open(path, "wb") as out:
             while True:
                 chunk = stream.read(1024 * 1024)
@@ -193,10 +204,16 @@ class Receiver:
                     self.m["limits"]["bytes"] = True
                     self._ignore(display, "limit", size)
                     return
+                has_content = has_content or bool(chunk.strip(b"\x00\r\n\t "))
                 digest.update(chunk)
                 out.write(chunk)
+        if not has_content:
+            # Empty or NUL-only (a crashed write): no test data, yet the name says PASS/FAIL.
+            # The desktop tool imports these as units; the web upload lists them and skips them.
+            shutil.rmtree(folder, ignore_errors=True)
+            self._ignore(display, "empty_log", size)
+            return
         self.m["bytes"] += size
-        meta = log_parser.parse_filename(base) or {}
         self.m["items"].append({
             "idx": idx, "name": display, "kind": "log", "size": size, "hash": digest.hexdigest(),
             "stored": os.path.join("files", f"{idx:06d}", base),

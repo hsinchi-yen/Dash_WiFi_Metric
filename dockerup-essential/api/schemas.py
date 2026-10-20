@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 
 # ─── Auth & accounts ─────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ class ValidateBody(BaseModel):
     upload_id: str = Field("", max_length=64)
     work_order: Optional[str] = Field("", max_length=64)
     product: Optional[str] = Field("", max_length=120)
-    planned_qty: Optional[str | int] = None
+    planned_qty: Optional[StrictInt | StrictStr] = None    # strict: JSON true must not become 1
 
 
 class CommitBody(ValidateBody):

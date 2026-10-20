@@ -299,6 +299,8 @@ export default {
     'lu.reason.symlink': 'Symbolic link',
     'lu.reason.limit': 'Over the size / count limit',
     'lu.reason.bad_zip': 'Damaged zip',
+    'lu.reason.bad_log_date': 'Log name with an impossible date/time',
+    'lu.reason.empty_log': 'Empty log (no test data)',
     'lu.step2': 'Confirm product, work order and planned quantity',
     'lu.modeChat': '🤖 AI Assistant',
     'lu.modeForm': '📝 Form',

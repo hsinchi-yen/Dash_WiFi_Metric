@@ -22,6 +22,17 @@ WO_RE = re.compile(r"^(\d{4}|NOWO)-(\d{2})(\d{2})(\d{2})(\d{3})$")
 WO_SEARCH_RE = re.compile(r"(?<![0-9A-Z])(?:\d{4}|NOWO)-\d{9}(?![0-9])")
 NOWO_PREFIX = "NOWO"
 _QTY_RE = re.compile(r"^\d{1,3}(?:,\d{3})+$|^\d+$")
+WO_AFTER_LOG_DAYS = 30        # R6: work order dated this long after the first log (real maximum: 6)
+WO_BEFORE_LOG_DAYS = 730      # R6: or this long before it (real maximum: 469)
+
+
+def _as_date(value) -> Optional[date]:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
 
 
 # ─── Normalisation and shape checks ──────────────────────────────────────────
@@ -86,9 +97,11 @@ def has_warnings(issues) -> bool:
     return any(i["level"] == "warn" for i in issues)
 
 
-def _wo_error(check: dict) -> dict:
+def _wo_error(check: dict, typed: Any = None) -> dict:
     code = check["code"]
     value = check["value"]
+    if code == "wo_bad_shape" and str(typed or "").strip():
+        value = str(typed).strip()[:40]      # a shape error is easier to see in the user's own spelling
     if code == "empty":
         return _issue("R3", "error", "請輸入工單號；沒有工單號請輸入 NOWO。",
                       "Please enter the work order, or NOWO when there is none.", reason="wo_empty")
@@ -141,6 +154,10 @@ def validate(facts: dict, fields: dict, ctx: dict) -> list[dict]:
                              f"Product \"{product['input'].strip()}\" is not in the registry and its TN number already belongs to "
                              f"{', '.join(same)}. Please choose the existing product.",
                              reason="product_same_tn", suggestions=list(dict.fromkeys(same + (product.get("near") or [])))))
+    elif status == "retired":
+        issues.append(_issue("R2", "error", f"產品 {product['canonical']} 已停用，不能再上傳。請改選其他產品，或請管理者在「產品名稱」頁重新啟用。",
+                             f"Product {product['canonical']} is retired and cannot receive uploads. Choose another product, or ask the "
+                             f"administrator to activate it on the Products page.", reason="product_retired"))
     elif status == "ambiguous":
         cands = product.get("candidates") or []
         issues.append(_issue("R2", "error", f"「{product['input'].strip()}」對應到多個產品：{', '.join(cands)}。請選擇一個。",
@@ -161,15 +178,30 @@ def validate(facts: dict, fields: dict, ctx: dict) -> list[dict]:
                              f"No work order: this batch is stored as {preview} (one number per batch). It is not linked to a "
                              f"production work order, so work-order statistics are for reference only.", value=preview))
     elif wo_check["code"] != "ok":
-        issues.append(_wo_error(wo_check))
+        issues.append(_wo_error(wo_check, fields.get("wo_input")))
     else:
         if wo_check.get("nowo"):
             issues.append(_issue("R5", "info", f"{work_order} 是無工單號批次；此批不與生產工單關聯，工單類統計僅供參考。",
                                  f"{work_order} is a no-work-order batch; it is not linked to a production work order.", value=work_order))
         today = ctx.get("today") or date.today()
-        if wo_check.get("date") and wo_check["date"] > today:
-            issues.append(_issue("R6", "warn", f"工單號 {work_order} 的日期（{wo_check['date']:%Y-%m-%d}）晚於今天，請確認沒有打錯。",
-                                 f"The date of work order {work_order} ({wo_check['date']:%Y-%m-%d}) is in the future. Please double-check."))
+        wo_date = wo_check.get("date")
+        first = _as_date(facts.get("first_test"))
+        if wo_date and wo_date > today:
+            issues.append(_issue("R6", "warn", f"工單號 {work_order} 的日期（{wo_date:%Y-%m-%d}）晚於今天，請確認沒有打錯。",
+                                 f"The date of work order {work_order} ({wo_date:%Y-%m-%d}) is in the future. Please double-check.", reason="wo_future"))
+        elif wo_date and first and not wo_check.get("nowo"):
+            # Real work orders: dated at most 6 days after their first log and at most 469 days before it
+            # (all 77 in the database). Far outside that, the number is probably mistyped or made up.
+            lag = (wo_date - first).days
+            if lag > WO_AFTER_LOG_DAYS:
+                issues.append(_issue("R6", "warn", f"工單號 {work_order} 的日期（{wo_date:%Y-%m-%d}）比這批 log 的第一筆測試（{first:%Y-%m-%d}）晚 {lag} 天；"
+                                     f"工單應在測試之前開立，請確認工單號。",
+                                     f"Work order {work_order} is dated {wo_date:%Y-%m-%d}, {lag} days after the first test in these logs "
+                                     f"({first:%Y-%m-%d}); a work order is opened before testing. Please check the number.", reason="wo_after_logs"))
+            elif -lag > WO_BEFORE_LOG_DAYS:
+                issues.append(_issue("R6", "warn", f"工單號 {work_order} 的日期（{wo_date:%Y-%m-%d}）比這批 log 早 {-lag} 天（超過 2 年），請確認年份沒有打錯。",
+                                     f"Work order {work_order} is dated {wo_date:%Y-%m-%d}, {-lag} days (over 2 years) before these logs. "
+                                     f"Please check the year.", reason="wo_long_before_logs"))
         if (fields.get("wo_input") or "") and normalize_wo(fields["wo_input"]) != str(fields["wo_input"]).strip():
             issues.append(_issue("R3", "info", f"工單號已由「{str(fields['wo_input']).strip()}」轉為 {work_order}。",
                                  f"Work order \"{str(fields['wo_input']).strip()}\" normalised to {work_order}.", reason="wo_normalized"))

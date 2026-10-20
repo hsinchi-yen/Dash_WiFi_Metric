@@ -167,6 +167,15 @@ def main():
         page.goto(f"{BASE}/#products", wait_until="networkidle")
         print("  uploader retire buttons:", page.locator("#prodRows [data-op='retire']").count(), "| new product button:", page.locator("#btnProdNew").is_visible())
         shot("27_products_uploader")
+        # Undo this run's batches so the planned quantity it set does not stay on the sample work order.
+        undone = page.evaluate("""async () => {
+            const t = sessionStorage.getItem('wifi-auth-v1'), h = { 'X-Tweak-Token': t };
+            const hist = await (await fetch('/api/log-upload/history?limit=50', { headers: h })).json();
+            let n = 0;
+            for (const r of hist.items) if (r.status === 'done') { await fetch('/api/log-upload/' + r.id, { method: 'DELETE', headers: h }); n++; }
+            return n;
+        }""")
+        print("  batches undone after the run:", undone)
         page.click("#btnLogout")
         page.wait_for_timeout(400)
         print("  signed out:", page.locator("#authBox").is_hidden())

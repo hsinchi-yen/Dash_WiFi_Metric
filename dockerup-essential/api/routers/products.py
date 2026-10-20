@@ -39,9 +39,13 @@ def resolve(body: ProductResolveBody, _user=Depends(auth.current_user)):
 @router.post("")
 def create(request: Request, body: ProductCreateBody, user=Depends(auth.current_user)):
     with db.db() as conn:
-        result = products.load(conn, include_retired=True).resolve(body.name)
+        result = products.load(conn).resolve(body.name)
         if result["status"] == "known":
             raise conflict(Msg(f"產品 {result['canonical']} 已存在。", f"Product {result['canonical']} already exists."), "duplicate_product", canonical=result["canonical"])
+        if result["status"] == "retired":
+            raise conflict(Msg(f"產品 {result['canonical']} 已存在但已停用，請管理者在本頁重新啟用。",
+                               f"Product {result['canonical']} exists but is retired; the administrator can activate it on this page."),
+                           "retired_product", canonical=result["canonical"])
         if result["status"] == "blocked_same_tn":
             raise bad_request(Msg(f"TN 編號已屬於 {', '.join(result['same_tn'])}，請改選既有產品。",
                                   f"The TN number already belongs to {', '.join(result['same_tn'])}. Please choose the existing product."),

@@ -219,8 +219,7 @@ def commit(body: CommitBody, user=Depends(auth.current_user)):
         row = upload.owned_upload(conn, upload_id, user, NOT_FOUND_RETRY)
         if row["status"] not in REUSABLE:
             raise conflict(Msg(f"這個批次已經處理過（狀態：{row['status']}）", f"This batch has already been processed (status: {row['status']})."), "already_processed")
-        manifest = upload.load_manifest(upload_id)
-        if not manifest["items"]:
+        if not upload.manifest_exists(upload_id):
             raise ApiError(410, Msg("暫存檔已過期，請重新選擇檔案", "The uploaded files have expired. Please choose them again."), "expired")
         # Session-level lock; released when this connection closes (early return or ingest end).
         if not db.fetch_one(conn, "SELECT pg_try_advisory_lock(%s) AS ok", (config.UPLOAD_LOCK_KEY,))["ok"]:

@@ -7,8 +7,10 @@ match_key        the name upper-cased with every separator removed (TN73PICOIMX6
 
 resolve(text) tells the caller what the text means:
   known            → use `canonical`
+  retired          → a registry product the administrator retired (not selectable; no upload)
   new              → a well-formed name nobody has used (needs the user's confirmation; R4)
   blocked_same_tn  → the TN number already belongs to another product (R16: a typo, not a new product)
+  ambiguous        → a TN number or name fragment that matches several products
   bad_format       → not a product name at all
 Pure helpers have no DB access (unit-testable); the registry itself lives in product_registry.
 """
@@ -59,32 +61,43 @@ def _lev(a: str, b: str) -> int:
 
 
 class Registry:
-    """In-memory view of the active products for one request."""
+    """In-memory view of the registry for one request. Active products are matched; retired ones
+    are recognised (so they are never re-proposed as new) and keep their TN number taken (R16)."""
 
     def __init__(self, rows: list[dict]):
-        self.rows = rows
+        self.rows = [r for r in rows if r.get("status", "active") == "active"]
         self.by_key: dict[str, dict] = {}
+        self.retired_by_key: dict[str, dict] = {}
         self.by_tn: dict[int, list[dict]] = {}
         for r in rows:
-            self.by_key[r["match_key"]] = r
+            target = self.by_key if r.get("status", "active") == "active" else self.retired_by_key
+            target[r["match_key"]] = r
             for alias in r.get("aliases") or []:
-                self.by_key.setdefault(match_key(alias), r)
+                target.setdefault(match_key(alias), r)
             if r.get("tn_number") is not None:
                 self.by_tn.setdefault(int(r["tn_number"]), []).append(r)
 
     def names(self) -> list[str]:
+        """Active canonical names (selection lists, the assistant's enum)."""
         return [r["canonical"] for r in self.rows]
 
     def resolve(self, text: str) -> dict[str, Any]:
         raw = str(text or "").strip()
         if not raw:
             return {"status": "bad_format", "input": raw}
+        norm = normalize(raw)
+        if re.match(r"^TN[-_ ]?\d", norm) and not shape(raw) and not TN_ONLY_RE.match(norm):
+            # A TN name with the wrong shape (TN-99_, TN-99_EDM1-IMX6P-, TN99EDM1IMX6P) is a typo even when
+            # its letters happen to equal a known product's: the separators are part of the format.
+            return {"status": "bad_format", "input": raw}
         key = match_key(raw)
         if key in self.by_key:
             return {"status": "known", "input": raw, "canonical": self.by_key[key]["canonical"]}
+        if key in self.retired_by_key:
+            return {"status": "retired", "input": raw, "canonical": self.retired_by_key[key]["canonical"]}
         tn_only = TN_ONLY_RE.match(normalize(raw))
         if tn_only:
-            rows = self.by_tn.get(int(tn_only.group(1)), [])
+            rows = [r for r in self.by_tn.get(int(tn_only.group(1)), []) if r.get("status", "active") == "active"]
             if len(rows) == 1:
                 return {"status": "known", "input": raw, "canonical": rows[0]["canonical"], "by_number": True}
             if len(rows) > 1:
@@ -92,9 +105,6 @@ class Registry:
             return {"status": "bad_format", "input": raw}
         s = shape(raw)
         if not s:
-            if re.match(r"^TN[-_ ]?\d", normalize(raw)):
-                # a truncated / malformed product name (TN-99_, TN-99_EDM1-) is a typo, never a colloquial hint
-                return {"status": "bad_format", "input": raw}
             # colloquial text: a unique product whose key contains the text's key
             partial = key if len(key) >= 4 else ""
             hits = [r for k, r in self.by_key.items() if partial and partial in k]
@@ -113,9 +123,8 @@ class Registry:
         return {"status": "new", "input": raw, "proposal": proposal, "near": near}
 
 
-def load(conn=None, include_retired: bool = False) -> Registry:
-    where = "" if include_retired else "WHERE status = 'active'"
-    sql = f"SELECT id, canonical, match_key, tn_number, aliases, status, note, source, created_by, created_at FROM product_registry {where} ORDER BY tn_number, canonical"
+def load(conn=None) -> Registry:
+    sql = "SELECT id, canonical, match_key, tn_number, aliases, status, note, source, created_by, created_at FROM product_registry ORDER BY tn_number, canonical"
     rows = db.jsonable(db.fetch_all(conn, sql)) if conn is not None else db.rows(sql)
     return Registry(rows)
 
@@ -142,9 +151,7 @@ def add(conn, canonical: str, created_by: str, source: str = "web", note: Option
         raise ValueError("bad_format")
     key = match_key(canonical)
     existing = db.fetch_one(conn, "SELECT canonical, status FROM product_registry WHERE match_key = %s", (key,))
-    if existing:
-        if existing["status"] != "active":
-            db.execute(conn, "UPDATE product_registry SET status = 'active' WHERE match_key = %s", (key,))
+    if existing:      # never re-activates a retired product: only the administrator does that
         return {"canonical": existing["canonical"], "created": False}
     db.execute(conn, """
         INSERT INTO product_registry (canonical, match_key, tn_number, status, source, note, created_by, created_upload_id)
