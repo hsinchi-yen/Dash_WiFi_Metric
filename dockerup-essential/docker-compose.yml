@@ -76,6 +76,7 @@ services:
     environment:
       DATABASE_URL: postgresql://qc:qcpass@postgres/wifitest
       PYTHONUNBUFFERED: "1"
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}   # guards /api/ingest and /api/admin/*; unset = those endpoints disabled
     volumes:
       - ./logs:/app/logs          # mount your log folder here
       - ./WiFiTestLogs:/app/WiFiTestLogs
