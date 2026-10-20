@@ -83,6 +83,31 @@ def run():
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )
         """)
+        # AI reports: one row per generation (queued → running → done | failed); the newest
+        # done row whose data_hash still matches the work order's numbers is the current report.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ai_reports (
+                id            BIGSERIAL PRIMARY KEY,
+                work_order    TEXT NOT NULL,
+                product_model TEXT NOT NULL DEFAULT '',
+                lang          TEXT NOT NULL,
+                status        TEXT NOT NULL,
+                priority      INT NOT NULL DEFAULT 0,
+                data_hash     TEXT,
+                text          TEXT,
+                model         TEXT,
+                error         TEXT,
+                requested_at  TIMESTAMPTZ DEFAULT NOW(),
+                started_at    TIMESTAMPTZ,
+                finished_at   TIMESTAMPTZ,
+                elapsed_sec   REAL
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS ai_reports_key_idx ON ai_reports (work_order, product_model, lang, requested_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS ai_reports_queue_idx ON ai_reports (priority DESC, requested_at) WHERE status = 'queued'")
+        # A worker that died mid-generation leaves 'running' rows behind; re-queue them.
+        cur.execute("UPDATE ai_reports SET status = 'queued', started_at = NULL WHERE status = 'running'")
+
         cur.execute("SELECT 1 FROM pg_matviews WHERE schemaname = current_schema() AND matviewname = 'mv_unit'")
         exists = cur.fetchone() is not None
         if not exists or meta_get(cur, "mv_unit_version") != MV_VERSION:

@@ -5,6 +5,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from typing import Optional
 
 import config
 
@@ -45,9 +46,13 @@ def status(max_age: float = config.LLM_STATUS_CACHE_SEC) -> dict:
                 "checked_at": _state["checked_at"], "last_ok_at": _state["last_ok_at"]}
 
 
-def chat(messages: list[dict], timeout: int = config.LLM_SUMMARY_TIMEOUT, **options) -> str:
-    """One chat completion; returns the assistant text. Raises on transport/HTTP errors."""
-    body = {"model": config.LLM_MODEL, "messages": messages, **options}
+def chat(messages: list[dict], timeout: int = config.LLM_SUMMARY_TIMEOUT, max_tokens: Optional[int] = None, **options) -> str:
+    """One chat completion; returns the assistant text. Raises on transport/HTTP errors.
+    Thinking follows LLM_ENABLE_THINKING (off by default: ~3× faster for the same answer)."""
+    body = {"model": config.LLM_MODEL, "messages": messages,
+            "chat_template_kwargs": {"enable_thinking": config.LLM_ENABLE_THINKING}, **options}
+    if max_tokens:
+        body["max_tokens"] = max_tokens
     req = urllib.request.Request(f"{config.LLM_API_BASE}/chat/completions",
                                  data=json.dumps(body).encode("utf-8"), headers=_headers())
     with urllib.request.urlopen(req, timeout=timeout) as response:

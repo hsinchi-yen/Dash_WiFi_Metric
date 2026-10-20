@@ -83,6 +83,10 @@ services:
       LLM_API_BASE: ${LLM_API_BASE:-http://10.20.30.23:8000/v1}
       LLM_API_KEY: ${LLM_API_KEY:-tn8227}
       LLM_MODEL: ${LLM_MODEL:-Qwen3.6-35B-A3B-Q6_K}
+      LLM_ENABLE_THINKING: ${LLM_ENABLE_THINKING:-false}   # off: same report ~3× faster
+      LLM_REPORT_MAX_TOKENS: ${LLM_REPORT_MAX_TOKENS:-1024}
+      REPORT_AUTO: ${REPORT_AUTO:-true}                   # pre-generate AI reports in the background
+      REPORT_WARM_LATEST: ${REPORT_WARM_LATEST:-30}       # newest N work orders kept ready (both languages)
       STATS_REFRESH_SEC: ${STATS_REFRESH_SEC:-300}   # mv_unit refresh interval (also refreshed after ingest/deletes)
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

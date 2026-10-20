@@ -1,16 +1,19 @@
-"""Background loop, started once per uvicorn worker (an advisory lock keeps the work single).
+"""Background loops, started once per uvicorn worker (advisory locks keep the work single).
 
 maintenance (every 15 s): refresh mv_unit when STATS_REFRESH_SEC has passed.
+reports     (every 5 s):  generate one queued AI report; once a minute, queue a missing or
+                          stale report for one of the newest work orders (REPORT_AUTO).
 """
 import logging
 import threading
 
-from services import stats
+import config
+from services import reports, stats
 
 log = logging.getLogger("wifi.scheduler")
 
 _stop = threading.Event()
-_thread = None
+_threads: list[threading.Thread] = []
 
 
 def _maintenance():
@@ -21,18 +24,31 @@ def _maintenance():
             log.exception("stats refresh failed")
 
 
+def _report_worker():
+    ticks = 0
+    while not _stop.wait(5):
+        ticks += 1
+        try:
+            if reports.process_queue_once():
+                continue
+            if config.REPORT_AUTO and ticks % 12 == 0:
+                reports.warm_once()
+        except Exception:
+            log.exception("report worker failed")
+
+
 def start():
-    global _thread
-    if _thread is not None:
+    if _threads:
         return
     _stop.clear()
-    _thread = threading.Thread(target=_maintenance, name="wifi-maintenance", daemon=True)
-    _thread.start()
+    for target, name in ((_maintenance, "wifi-maintenance"), (_report_worker, "wifi-reports")):
+        t = threading.Thread(target=target, name=name, daemon=True)
+        t.start()
+        _threads.append(t)
 
 
 def stop():
-    global _thread
     _stop.set()
-    if _thread is not None:
-        _thread.join(timeout=2)
-        _thread = None
+    for t in _threads:
+        t.join(timeout=2)
+    _threads.clear()

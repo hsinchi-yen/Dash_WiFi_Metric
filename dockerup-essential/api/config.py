@@ -19,6 +19,16 @@ LLM_MODEL = os.environ.get("LLM_MODEL", "Qwen3.6-35B-A3B-Q6_K")
 LLM_STATUS_TIMEOUT = 3          # seconds for the /models probe
 LLM_STATUS_CACHE_SEC = 20       # the old page polls every 30 s per tab; one probe serves them all
 LLM_SUMMARY_TIMEOUT = 180
+# Thinking off: the same report prompt took 57 s with thinking and 18 s without (2026-10-20).
+LLM_ENABLE_THINKING = os.environ.get("LLM_ENABLE_THINKING", "false").lower() == "true"
+LLM_REPORT_MAX_TOKENS = int(os.environ.get("LLM_REPORT_MAX_TOKENS", "1024"))
+
+# AI reports are generated in the background and stored (ai_reports); opening one is a read.
+# REPORT_AUTO keeps the newest REPORT_WARM_LATEST work orders' reports current in both languages
+# (regenerated when their data changes); reports for other work orders are generated on first open.
+REPORT_AUTO = os.environ.get("REPORT_AUTO", "true").lower() == "true"
+REPORT_WARM_LATEST = int(os.environ.get("REPORT_WARM_LATEST", "30"))
+REPORT_FAILED_RETRY_SEC = 300   # a failed generation is not retried automatically for this long
 
 # mv_unit (one row per SN: its latest test) is refreshed on this interval and right after
 # ingest / DB Tweak deletes. Rows written by the desktop uploader show up within one interval.
@@ -36,3 +46,4 @@ YIELD_WARN = 95.0          # ≥ amber, below → red
 # Postgres advisory lock keys (shared by both uvicorn workers)
 MIGRATION_LOCK_KEY = 7361001
 STATS_REFRESH_LOCK_KEY = 7361002
+REPORT_WORKER_LOCK_KEY = 7361003   # one report generation at a time across workers

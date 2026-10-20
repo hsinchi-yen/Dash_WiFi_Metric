@@ -29,14 +29,6 @@ export const app = {
     params() { return scopeParams(this.scope); },
     scopeKey() { return scopeKey(this.scope); },
     latestWorkOrder() { return this.options.latest_work_order || ''; },
-    /** The work order to report on: the one in scope, else the latest one within the product filter. */
-    reportTarget() {
-        const list = this.options.work_orders;
-        const row = this.scope.workOrder
-            ? list.find(w => w.work_order === this.scope.workOrder)
-            : list.find(w => !this.scope.product || w.product_model === this.scope.product);
-        return row ? { wo: row.work_order, product: row.product_model || '' } : (this.scope.workOrder ? { wo: this.scope.workOrder, product: '' } : null);
-    },
     openReport(wo, product) { report.open(wo, product); },
     reload() { return loadPage(); },
     refreshOptions: () => loadOptions(),
@@ -324,11 +316,6 @@ async function start() {
     PAGES.forEach(p => p.init?.(app));
     auth.onAuthChange(renderAuth);
     $('#btnLogout').addEventListener('click', auth.logout);
-    $('#navAiReport').addEventListener('click', () => {
-        const target = app.reportTarget();
-        if (target) report.open(target.wo, target.product);
-        else toast(t('rp.noLatest'));
-    });
     window.addEventListener('hashchange', () => show(pageFromHash()));
 
     await Promise.all([loadMeta(), loadOptions(), auth.restore()]);

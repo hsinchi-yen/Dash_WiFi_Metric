@@ -49,7 +49,7 @@ with sync_playwright() as p:
     page.click("#btnTheme")   # back to dark, stay zh
     # AI report modal (do not wait for the LLM; just the window)
     page.goto(f"{BASE}/#workorders", wait_until="networkidle")
-    page.click("#navAiReport"); page.wait_for_timeout(1500); page.screenshot(path=f"{OUT}/07_report_modal.png"); print("shot 07_report_modal", page.locator("#rpTitle").inner_text())
+    page.click("#woRows [data-report]"); page.wait_for_timeout(2500); page.screenshot(path=f"{OUT}/07_report_modal.png"); print("shot 07_report_modal", page.locator("#rpTitle").inner_text())
     page.keyboard.press("Escape")
     # phone
     phone = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
