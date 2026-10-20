@@ -12,7 +12,7 @@
 
 | 角色 | 來源 | 能做什麼 |
 |---|---|---|
-| **管理者** | 伺服器環境變數 `TWEAK_USER` / `TWEAK_PASS`(**沒有預設值;未設定 = 無人能登入管理者**) | 資料庫維護(瀏覽/刪除)、帳號管理、產品辨認庫(新增/停用/備註)、上傳 Log(看得到所有人的批次並可撤銷)、`/api/ingest` |
+| **管理者** | 伺服器環境變數 `TWEAK_USER` / `TWEAK_PASS`(**預設 `qc` / `qcpass`,與 PostgreSQL 帳密相同,和原本 DB Tweak 的登入一致**) | 資料庫維護(瀏覽/刪除)、帳號管理、產品辨認庫(新增/停用/備註)、上傳 Log(看得到所有人的批次並可撤銷)、`/api/ingest` |
 | **上傳者** | 管理者在「帳號管理」頁建立(存在 `app_users`,密碼 PBKDF2-SHA256) | 上傳 Log(只看得到、只能撤銷自己的批次)、新增產品、修改自己的密碼 |
 
 - 登入一次,四個管理頁共用(`POST /api/auth/login` → session token,8 小時;只存 SHA-256,放在瀏覽器 sessionStorage,關分頁即登出)。
@@ -88,13 +88,13 @@ migration 在 API 啟動時自動執行(advisory lock 序列化兩個 worker)。
 
 截圖:`dockerup-docs/04_Reports/screenshots/phase4/`(登入、帳號管理三個分頁、產品辨認庫、資料庫維護、上傳 Log 各步驟、AI 對話、R16 擋下、對齊卡、完成畫面、淺色中文版)。
 
-本機測試帳號:管理者 `test_admin`(密碼在 git-ignored 的 `dockerup-essential/.env`),上傳者 `test_uploader`、`e2e_uploader`(由測試腳本建立,可在帳號管理頁停用)。
+本機測試帳號:管理者 `qc` / `qcpass`(`dockerup-essential/.env`),上傳者 `test_uploader`、`e2e_uploader`(由測試腳本建立,可在帳號管理頁停用)。
 
 ---
 
 ## 4. 部署前要準備的(尚未部署)
 
-1. 正式機 `dockerup-essential/.env` 必須設定 **`TWEAK_USER` / `TWEAK_PASS`**(管理者),可選 `SESSION_TTL_HOURS`(預設 8)。
+1. 管理者登入預設 **`qc` / `qcpass`**(compose 預設值);要改就在正式機 `dockerup-essential/.env` 設 `TWEAK_USER` / `TWEAK_PASS`,可選 `SESSION_TTL_HOURS`(預設 8)。
 2. API 映像需重建(新增 `python-multipart`):`docker compose build api`。
 3. compose 新增 volume `${STORAGE_PATH}/docker-data/uploads:/app/uploads`(上傳暫存,每批 commit 後清除;超過 1 小時的殘留自動清掉)。
 4. 第一次啟動會自動建表、加 `test_record.upload_id`、seed 辨認庫;不需要停機維護。

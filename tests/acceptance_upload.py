@@ -20,8 +20,8 @@ from datetime import date
 
 BASE = sys.argv[1].rstrip("/") if len(sys.argv) > 1 else "http://127.0.0.1:8000"
 SAMPLE = sys.argv[2] if len(sys.argv) > 2 else ""
-ADMIN_USER = sys.argv[3] if len(sys.argv) > 3 else os.environ.get("TWEAK_USER", "test_admin")
-ADMIN_PASS = sys.argv[4] if len(sys.argv) > 4 else os.environ.get("TWEAK_PASS", "test-admin-pass-2026")
+ADMIN_USER = sys.argv[3] if len(sys.argv) > 3 else os.environ.get("TWEAK_USER", "qc")
+ADMIN_PASS = sys.argv[4] if len(sys.argv) > 4 else os.environ.get("TWEAK_PASS", "qcpass")
 UPLOADER, UPLOADER_PASS = "test_uploader", "uploader-pass-2026"
 TODAY = date.today().strftime("%y%m%d")
 NEW_WO = f"5101-{TODAY}001"

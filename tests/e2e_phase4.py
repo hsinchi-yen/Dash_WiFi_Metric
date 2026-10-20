@@ -15,8 +15,8 @@ from playwright.sync_api import sync_playwright
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
 OUT = sys.argv[2] if len(sys.argv) > 2 else "docs-screenshots"
 SAMPLE = sys.argv[3] if len(sys.argv) > 3 else ""
-ADMIN_USER = sys.argv[4] if len(sys.argv) > 4 else os.environ.get("TWEAK_USER", "test_admin")
-ADMIN_PASS = sys.argv[5] if len(sys.argv) > 5 else os.environ.get("TWEAK_PASS", "test-admin-pass-2026")
+ADMIN_USER = sys.argv[4] if len(sys.argv) > 4 else os.environ.get("TWEAK_USER", "qc")
+ADMIN_PASS = sys.argv[5] if len(sys.argv) > 5 else os.environ.get("TWEAK_PASS", "qcpass")
 UPLOADER, UPLOADER_PASS = "e2e_uploader", "e2e-uploader-pass"
 os.makedirs(OUT, exist_ok=True)
 problems = []
