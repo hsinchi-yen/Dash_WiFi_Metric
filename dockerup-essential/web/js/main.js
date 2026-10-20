@@ -1,0 +1,342 @@
+// App shell: hash routing, the filter bar (range + product + work order), data freshness,
+// theme, language, clock, idle rotation.
+import { apiGet, apiPost, onApiStatus } from './core/api.js';
+import * as auth from './core/auth.js';
+import * as charts from './core/charts.js';
+import { fmtClockDate, fmtDate, fmtShortDate, fmtTime, setThresholds } from './core/format.js';
+import { applyI18n, getLang, initLang, onLangChange, setLang, t } from './core/i18n.js';
+import { presetRange, scopeKey, scopeParams } from './core/scope.js';
+import { $, $$, initEscapeClose, initFormModal, toast, closeFormModal } from './core/ui.js';
+import report from './report.js';
+import overview from './pages/overview.js';
+import workorders from './pages/workorders.js';
+import fails from './pages/fails.js';
+import rf from './pages/rf.js';
+import production from './pages/production.js';
+import dbtweak from './pages/dbtweak.js';
+
+const PAGES = [overview, workorders, fails, rf, production, dbtweak];
+const byId = Object.fromEntries(PAGES.map(p => [p.id, p]));
+const IDLE_MS = 5 * 60 * 1000;
+const ROTATE_MS = 30 * 1000;
+const ROTATION = ['overview', 'workorders'];
+
+export const app = {
+    page: null,
+    scope: { range: 'all', workOrder: '', product: '', from: '', to: '' },
+    options: { work_orders: [], products: [], latest_work_order: null },
+    meta: null,
+    params() { return scopeParams(this.scope); },
+    scopeKey() { return scopeKey(this.scope); },
+    latestWorkOrder() { return this.options.latest_work_order || ''; },
+    /** The work order to report on: the one in scope, else the latest one within the product filter. */
+    reportTarget() {
+        const list = this.options.work_orders;
+        const row = this.scope.workOrder
+            ? list.find(w => w.work_order === this.scope.workOrder)
+            : list.find(w => !this.scope.product || w.product_model === this.scope.product);
+        return row ? { wo: row.work_order, product: row.product_model || '' } : (this.scope.workOrder ? { wo: this.scope.workOrder, product: '' } : null);
+    },
+    openReport(wo, product) { report.open(wo, product); },
+    reload() { return loadPage(); },
+    refreshOptions: () => loadOptions(),
+};
+
+/* ─── Routing ─── */
+function pageFromHash() {
+    const id = location.hash.replace(/^#/, '').split('?')[0];
+    return byId[id] ? id : 'overview';
+}
+
+async function show(id) {
+    const page = byId[id];
+    app.page = page;
+    $$('.page').forEach(s => { s.hidden = s.id !== `page-${id}`; });
+    $$('.nav-item[data-page]').forEach(a => {
+        if (a.dataset.page === id) a.setAttribute('aria-current', 'page');
+        else a.removeAttribute('aria-current');
+    });
+    $('#pageTitle').textContent = t(`page.${id}`);
+    document.title = `${t(`page.${id}`)} · ${t('app.title')}`;
+    $('#filterBar').hidden = !page.scoped;
+    updateScopeLabel();
+    await loadPage();
+}
+
+async function loadPage() {
+    const page = app.page;
+    if (!page) return;
+    try {
+        await page.load(app);
+    } catch (err) {
+        console.error(`page ${page.id} failed`, err);
+    }
+}
+
+/* ─── Filter bar ─── */
+function updateScopeLabel() {
+    const el = $('#pageScope');
+    if (!app.page?.scoped) { el.textContent = ''; return; }
+    const parts = [];
+    if (app.scope.product) parts.push(app.scope.product);
+    if (app.scope.workOrder) parts.push(`${t('filter.woAria')} ${app.scope.workOrder}`);
+    const { from, to } = app.scope.range === 'custom' ? app.scope : presetRange(app.scope.range);
+    if (from || to) parts.push(from === to ? from : `${from || '…'} ~ ${to || '…'}`);
+    el.textContent = parts.join(t('common.dot')) || t('filter.scopeAll');
+}
+
+function renderRange() {
+    $$('#rangeSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.range === app.scope.range)));
+    $('#customRange').hidden = app.scope.range !== 'custom';
+}
+
+function renderWoOptions() {
+    const sel = $('#woSelect');
+    sel.innerHTML = '';
+    sel.appendChild(new Option(t('filter.allWo'), ''));
+    const list = app.scope.product
+        ? app.options.work_orders.filter(w => w.product_model === app.scope.product)
+        : app.options.work_orders;
+    list.forEach(w => {
+        const latest = w.work_order === app.options.latest_work_order ? t('filter.latest') : '';
+        const label = t('filter.woOption', { wo: w.work_order, latest, from: fmtShortDate(w.first_date), to: fmtShortDate(w.last_date) });
+        sel.appendChild(new Option(label, w.work_order));
+    });
+    sel.value = app.scope.workOrder;
+    if (sel.value !== app.scope.workOrder) { app.scope.workOrder = ''; sel.value = ''; }
+}
+
+function renderProductOptions() {
+    const sel = $('#productSelect');
+    sel.innerHTML = '';
+    sel.appendChild(new Option(t('filter.allProducts'), ''));
+    app.options.products.forEach(p => sel.appendChild(new Option(p.product_model, p.product_model)));
+    sel.value = app.scope.product;
+    if (sel.value !== app.scope.product) { app.scope.product = ''; sel.value = ''; }
+}
+
+function scopeChanged() {
+    renderRange();
+    updateScopeLabel();
+    loadPage();
+}
+
+function initFilters() {
+    $$('#rangeSeg button').forEach(b => b.addEventListener('click', () => {
+        app.scope.range = b.dataset.range;
+        if (b.dataset.range === 'custom' && !app.scope.from) {
+            const latest = app.options.work_orders[0];
+            app.scope.from = latest ? fmtDate(latest.first_date) : fmtDate(new Date());
+            app.scope.to = latest ? fmtDate(latest.last_date) : fmtDate(new Date());
+            $('#dateFrom').value = app.scope.from;
+            $('#dateTo').value = app.scope.to;
+        }
+        scopeChanged();
+    }));
+    for (const [id, key] of [['#dateFrom', 'from'], ['#dateTo', 'to']]) {
+        $(id).addEventListener('change', e => { app.scope[key] = e.target.value; scopeChanged(); });
+    }
+    $('#woSelect').addEventListener('change', e => { app.scope.workOrder = e.target.value; scopeChanged(); });
+    $('#productSelect').addEventListener('change', e => {
+        app.scope.product = e.target.value;
+        renderWoOptions();            // the work-order list follows the product
+        scopeChanged();
+    });
+}
+
+async function loadOptions() {
+    try {
+        app.options = await apiGet('/api/filter-options');
+    } catch {
+        app.options = app.options || { work_orders: [], products: [], latest_work_order: null };
+    }
+    renderProductOptions();
+    renderWoOptions();
+}
+
+/* ─── Freshness, status lights ─── */
+async function loadMeta() {
+    try {
+        const meta = await apiGet('/api/meta');
+        const changed = app.meta && app.meta.stats_refreshed_at !== meta.stats_refreshed_at;
+        app.meta = meta;
+        setThresholds(meta.thresholds);
+        renderFreshness();
+        setLlm(meta.llm?.connected);
+        return changed;
+    } catch {
+        return false;
+    }
+}
+
+function renderFreshness() {
+    const at = app.meta?.stats_refreshed_at;
+    $('#freshText').textContent = at ? t('fresh.label', { time: `${fmtShortDate(at)} ${fmtTime(at)}` }) : t('fresh.unknown');
+}
+
+const lights = { api: null, llm: null };
+
+function renderLights() {
+    if (lights.api !== null) $('#apiText').textContent = lights.api ? t('status.apiOk') : t('status.apiErr');
+    if (lights.llm !== null) $('#llmText').textContent = lights.llm ? t('status.llmOk') : t('status.llmErr');
+}
+
+function setLlm(ok) {
+    lights.llm = !!ok;
+    $('#llmDot').className = `dot ${ok ? 'ok' : 'err'}`;
+    renderLights();
+    report.setLlm(!!ok);
+}
+
+function initStatus() {
+    onApiStatus(ok => {
+        lights.api = !!ok;
+        $('#apiDot').className = `dot ${ok ? 'ok' : 'err'}`;
+        renderLights();
+    });
+    $('#btnRefresh').addEventListener('click', async () => {
+        const btn = $('#btnRefresh');
+        btn.disabled = true;
+        btn.textContent = t('fresh.refreshing');
+        try {
+            await apiPost('/api/stats/refresh');
+            await Promise.all([loadMeta(), loadOptions()]);
+            await loadPage();
+            toast(t('fresh.done'));
+        } catch (err) {
+            toast(err.message, 'bad');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = t('fresh.refresh');
+        }
+    });
+    // New data (scheduled view refresh, ingest): reload the visible page quietly.
+    setInterval(async () => {
+        if (await loadMeta()) {
+            await loadOptions();
+            if (app.page?.scoped && !busy()) loadPage();
+        }
+    }, 60 * 1000);
+}
+
+/* ─── Theme, clock ─── */
+function currentTheme() { return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'; }
+
+function renderThemeButton() {
+    $('#btnTheme').textContent = currentTheme() === 'dark' ? t('theme.toLight') : t('theme.toDark');
+}
+
+function initTheme() {
+    renderThemeButton();
+    $('#btnTheme').addEventListener('click', () => {
+        const next = currentTheme() === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem('wifi-theme', next); } catch { /* storage blocked */ }
+        renderThemeButton();
+        charts.rethemeAll();
+    });
+}
+
+function tickClock() {
+    const now = new Date();
+    $('#clockTime').textContent = now.toTimeString().slice(0, 5);
+    $('#clockDate').textContent = fmtClockDate(now, getLang());
+}
+
+function initClock() {
+    tickClock();
+    setInterval(tickClock, 10 * 1000);
+}
+
+/* ─── Language: English (default) / 中文; switching keeps the page, filters and sign-in ─── */
+function initLanguage() {
+    $('#btnLang').addEventListener('click', () => setLang(getLang() === 'en' ? 'zh' : 'en'));
+    onLangChange(() => {
+        applyI18n();
+        renderThemeButton();
+        tickClock();
+        renderFreshness();
+        renderLights();
+        renderProductOptions();
+        renderWoOptions();
+        renderAuthBox(auth.currentUser());
+        if (app.page) {
+            $('#pageTitle').textContent = t(`page.${app.page.id}`);
+            document.title = `${t(`page.${app.page.id}`)} · ${t('app.title')}`;
+        }
+        updateScopeLabel();
+        report.onLangChange();
+        PAGES.forEach(p => p.onLangChange?.(app));
+        if (app.page && !app.page.isBusy?.()) loadPage();
+    });
+}
+
+/* ─── Signed-in user box (DB Maintenance login) ─── */
+function renderAuthBox(user) {
+    $('#authBox').hidden = !user;
+    if (user) {
+        $('#authName').textContent = t('auth.user', { name: auth.displayName(user) });
+        $('#authName').title = auth.displayName(user);
+        $('#authRole').textContent = t('auth.dbLogin');
+    }
+}
+
+function renderAuth(user, reason) {
+    renderAuthBox(user);
+    if (reason === 'expired') toast(t('auth.expired'), 'bad');
+    PAGES.forEach(p => p.onAuthChange?.(user, reason, app));
+}
+
+/* ─── Idle rotation: Dashboard ↔ Work Orders every 30 s after 5 min idle; filters untouched ─── */
+const idle = { last: Date.now() };
+
+function busy() {
+    return !$('#reportModal').hidden || !$('#formModal').hidden || PAGES.some(p => p.isBusy?.());
+}
+
+function initIdleRotation() {
+    const touch = () => { idle.last = Date.now(); };
+    ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'].forEach(ev =>
+        window.addEventListener(ev, touch, { passive: true }));
+    setInterval(() => {
+        if (Date.now() - idle.last < IDLE_MS || busy() || document.hidden) return;
+        const i = ROTATION.indexOf(app.page?.id);
+        const next = ROTATION[(i + 1) % ROTATION.length];
+        if (location.hash !== `#${next}`) location.hash = next;
+        else loadPage();
+    }, ROTATE_MS);
+}
+
+/* ─── Start ─── */
+async function start() {
+    initLang();
+    applyI18n();
+    initFormModal();
+    initEscapeClose([['formModal', closeFormModal], ['reportModal', () => report.close()]]);
+    charts.applyDefaults();
+    initTheme();
+    initLanguage();
+    initClock();
+    initStatus();
+    initFilters();
+    renderRange();
+    report.init(app);
+    PAGES.forEach(p => p.init?.(app));
+    auth.onAuthChange(renderAuth);
+    $('#btnLogout').addEventListener('click', auth.logout);
+    $('#navAiReport').addEventListener('click', () => {
+        const target = app.reportTarget();
+        if (target) report.open(target.wo, target.product);
+        else toast(t('rp.noLatest'));
+    });
+    window.addEventListener('hashchange', () => show(pageFromHash()));
+
+    await Promise.all([loadMeta(), loadOptions(), auth.restore()]);
+    app.scope.workOrder = app.latestWorkOrder();     // default view: the latest work order
+    renderWoOptions();
+    initIdleRotation();
+    await show(pageFromHash());
+}
+
+// Chart.js is a deferred classic script; module scripts run after it.
+start();

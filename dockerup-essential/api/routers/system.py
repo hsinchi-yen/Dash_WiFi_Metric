@@ -40,6 +40,7 @@ def meta():
         "stats_refreshed_at": stats.refreshed_at(),
         "stats_refresh_sec": config.STATS_REFRESH_SEC,
         "thresholds": {"yield_good": config.YIELD_GOOD, "yield_warn": config.YIELD_WARN},
+        "llm": {k: v for k, v in llm.status().items() if k in ("connected", "model")},
     }
 
 

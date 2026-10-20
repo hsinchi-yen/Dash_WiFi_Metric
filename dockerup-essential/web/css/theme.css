@@ -1,0 +1,72 @@
+/* Two themes only: Dark (default, from the former "Blue" theme) and Light.
+   Every colour in the app — including chart colours — comes from these variables. */
+:root,
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0b0b0d;
+    --surface: #1c1c1e;
+    --surface-2: #2c2c2e;
+    --surface-3: #3a3a3c;
+    --border: #38383a;
+    --text: #f5f5f7;
+    --text-2: #aeaeb2;
+    --text-3: #7c7c82;
+    --accent: #0a84ff;
+    --accent-bg: rgba(10, 132, 255, 0.14);
+    --accent-text: #ffffff;
+
+    --good: #30d158;
+    --warn: #ffb020;
+    --bad: #ff453a;
+    --good-bg: rgba(48, 209, 88, 0.14);
+    --warn-bg: rgba(255, 176, 32, 0.14);
+    --bad-bg: rgba(255, 69, 58, 0.14);
+
+    --c-pass: #30d158;
+    --c-fail: #ff453a;
+    --c-stop: #ffb020;
+    --c-1: #0a84ff;
+    --c-2: #bf5af2;
+    --c-3: #64d2ff;
+    --c-4: #ff9f0a;
+    --c-muted: #8e8e93;
+    --grid: rgba(255, 255, 255, 0.08);
+
+    --shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    --overlay: rgba(0, 0, 0, 0.6);
+}
+
+:root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f2f3f5;
+    --surface: #ffffff;
+    --surface-2: #f2f3f6;
+    --surface-3: #e3e5ea;
+    --border: #d6d9df;
+    --text: #15171a;
+    --text-2: #4c5058;
+    --text-3: #6e737c;
+    --accent: #0064d2;
+    --accent-bg: rgba(0, 100, 210, 0.10);
+    --accent-text: #ffffff;
+
+    --good: #128a3c;
+    --warn: #a35f00;
+    --bad: #c8261b;
+    --good-bg: rgba(18, 138, 60, 0.10);
+    --warn-bg: rgba(163, 95, 0, 0.12);
+    --bad-bg: rgba(200, 38, 27, 0.10);
+
+    --c-pass: #1f9d4c;
+    --c-fail: #d93025;
+    --c-stop: #d98200;
+    --c-1: #0064d2;
+    --c-2: #8e44c9;
+    --c-3: #0f8fb8;
+    --c-4: #d97706;
+    --c-muted: #8a8f98;
+    --grid: rgba(0, 0, 0, 0.08);
+
+    --shadow: 0 12px 32px rgba(20, 24, 33, 0.14);
+    --overlay: rgba(20, 24, 33, 0.4);
+}

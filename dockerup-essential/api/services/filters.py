@@ -101,3 +101,51 @@ def resolve_rf_window(work_order: Optional[str] = None, product_model: Optional[
         "window_end": window_end,
         "hour_slots": int(day_rows[0].get("hour_slots") or 0),
     }
+
+
+# ─── Date-range scope used by the web/ front end ─────────────────────────────
+# date_from / date_to are inclusive ISO dates (the filter bar's All / Today / This Week /
+# This Month / Custom); both empty means all data. The window is half-open in test_time.
+
+def resolve_range_window(date_from: Optional[str], date_to: Optional[str]) -> dict[str, Any]:
+    start = _parse_date(date_from)
+    end = _parse_date(date_to)
+    if start and end and start > end:
+        start, end = end, start
+    window = {
+        "scope": "range" if (start or end) else "all",
+        "window_start": start,
+        "window_end": end + timedelta(days=1) if end else None,
+        "date_from": start.strftime("%Y-%m-%d") if start else None,
+        "date_to": end.strftime("%Y-%m-%d") if end else None,
+    }
+    if not (start or end):
+        window["window_label"] = "all"
+    elif start and end and start == end:
+        window["window_label"] = window["date_from"]
+    else:
+        window["window_label"] = f"{window['date_from'] or '…'} ~ {window['date_to'] or '…'}"
+    return window
+
+
+def _parse_date(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.strptime(str(value)[:10], "%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def range_where(window: dict, work_order: Optional[str], product_model: Optional[str], extra: str = ""):
+    """WHERE clause for a range window plus the optional work order / product / extra filters."""
+    where, params = "", []
+    if window.get("window_start") is not None:
+        where, params = "WHERE test_time >= %s", [window["window_start"]]
+    if window.get("window_end") is not None:
+        where += (" AND" if where else "WHERE") + " test_time < %s"
+        params.append(window["window_end"])
+    where, params = scoped(work_order, product_model, where, params)
+    if extra:
+        where += (" AND" if where else "WHERE") + " " + extra
+    return where, params

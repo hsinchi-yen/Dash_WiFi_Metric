@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WiFi YFP Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a84ff'/%3E%3Ctext x='16' y='21' font-size='13' font-family='Arial' font-weight='700' fill='white' text-anchor='middle'%3ETN%3C/text%3E%3C/svg%3E">
+<script>
+    // Apply the saved theme before first paint (no flash). Dark is the default.
+    try { document.documentElement.dataset.theme = localStorage.getItem('wifi-theme') === 'light' ? 'light' : 'dark'; } catch (e) {}
+</script>
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/pages.css">
+<script src="vendor/chart.umd-4.4.1.min.js" defer></script>
+<script type="module" src="js/main.js"></script>
+</head>
+<body>
+<div class="app">
+
+<!-- ═══ Sidebar ═══ -->
+<aside class="sidebar">
+    <div class="brand">
+        <div class="brand-mark">TN</div>
+        <div>
+            <div class="brand-name">WiFi YFP</div>
+            <div class="brand-sub" data-i18n="app.sub"></div>
+        </div>
+    </div>
+    <div class="clock">
+        <div class="clock-time num" id="clockTime">--:--</div>
+        <div class="clock-date" id="clockDate"></div>
+    </div>
+    <nav class="nav" data-i18n-aria="nav.aria">
+        <div class="nav-label" data-i18n="nav.groupOverview"></div>
+        <a class="nav-item" href="#overview" data-page="overview"><span class="nav-icon">📊</span><span data-i18n="nav.overview"></span></a>
+        <a class="nav-item" href="#workorders" data-page="workorders"><span class="nav-icon">📋</span><span data-i18n="nav.workorders"></span></a>
+        <a class="nav-item" href="#fails" data-page="fails"><span class="nav-icon">⚠️</span><span data-i18n="nav.fails"></span></a>
+        <div class="nav-label" data-i18n="nav.groupAnalysis"></div>
+        <button class="nav-item" type="button" id="navAiReport"><span class="nav-icon">✨</span><span data-i18n="nav.aiReport"></span></button>
+        <a class="nav-item" href="#rf" data-page="rf"><span class="nav-icon">📡</span><span data-i18n="nav.rf"></span></a>
+        <a class="nav-item" href="#production" data-page="production"><span class="nav-icon">⚡</span><span data-i18n="nav.production"></span></a>
+        <div class="nav-label" data-i18n="nav.groupManage"></div>
+        <a class="nav-item" href="#dbtweak" data-page="dbtweak" title="DB Tweak"><span class="nav-icon">🔧</span><span data-i18n="nav.dbtweak"></span></a>
+    </nav>
+    <div class="sidebar-foot">
+        <div class="auth-box" id="authBox" hidden>
+            <div class="auth-name" id="authName"></div>
+            <div class="auth-role" id="authRole"></div>
+            <div class="auth-actions">
+                <button class="btn small" type="button" id="btnLogout" data-i18n="auth.logout"></button>
+            </div>
+        </div>
+        <div class="prefs">
+            <button class="btn small" type="button" id="btnTheme" data-i18n-aria="theme.aria"></button>
+            <button class="btn small" type="button" id="btnLang" data-i18n="lang.switch" data-i18n-aria="lang.aria"></button>
+        </div>
+        <div class="status-row"><span class="dot wait" id="apiDot"></span><span id="apiText" data-i18n="status.api"></span></div>
+        <div class="status-row"><span class="dot wait" id="llmDot"></span><span id="llmText" data-i18n="status.llm"></span></div>
+    </div>
+</aside>
+
+<!-- ═══ Main ═══ -->
+<main class="main">
+    <header class="topbar">
+        <div class="page-head">
+            <h1 class="page-title" id="pageTitle"></h1>
+            <span class="page-scope" id="pageScope"></span>
+        </div>
+        <div class="topbar-spacer"></div>
+        <div class="filters" id="filterBar" hidden>
+            <div class="seg" role="group" id="rangeSeg" data-i18n-aria="filter.rangeAria">
+                <button type="button" data-range="all" data-i18n="filter.all"></button>
+                <button type="button" data-range="today" data-i18n="filter.today"></button>
+                <button type="button" data-range="week" data-i18n="filter.week"></button>
+                <button type="button" data-range="month" data-i18n="filter.month"></button>
+                <button type="button" data-range="custom" data-i18n="filter.custom"></button>
+            </div>
+            <span id="customRange" hidden>
+                <input type="date" class="input" id="dateFrom" data-i18n-aria="filter.from">
+                <span class="muted">~</span>
+                <input type="date" class="input" id="dateTo" data-i18n-aria="filter.to">
+            </span>
+            <select class="select" id="productSelect" data-i18n-aria="filter.productAria"></select>
+            <select class="select" id="woSelect" data-i18n-aria="filter.woAria"></select>
+        </div>
+        <div class="freshness">
+            <span id="freshText"></span>
+            <button class="btn small ghost" type="button" id="btnRefresh" data-i18n="fresh.refresh"></button>
+        </div>
+    </header>
+
+    <div class="content">
+
+    <!-- ─── Dashboard ─── -->
+    <section class="page" id="page-overview" hidden>
+        <div class="ov-numbers">
+            <div class="ov-hero">
+                <div class="label" data-i18n="ov.yield"></div>
+                <div class="value" id="ovYield">—</div>
+                <div class="aligned" id="ovPlan"></div>
+            </div>
+            <div class="ov-num"><div class="label" data-i18n="ov.units"></div><div class="value" id="ovUnits">—</div><div class="sub" id="ovUnitsSub"></div></div>
+            <div class="ov-num"><div class="label" data-i18n="ov.pass"></div><div class="value v-pass" id="ovPass">—</div></div>
+            <div class="ov-num"><div class="label" data-i18n="ov.fail"></div><div class="value v-fail" id="ovFail">—</div></div>
+            <div class="ov-num"><div class="label" data-i18n="ov.retry"></div><div class="value" id="ovRetry">—</div><div class="sub" id="ovRetrySub"></div></div>
+            <div class="ov-num"><div class="label" data-i18n="ov.avg24"></div><div class="value" id="ovAvg24">—</div><div class="sub" data-i18n="ov.mbps"></div></div>
+            <div class="ov-num"><div class="label" data-i18n="ov.avg5"></div><div class="value" id="ovAvg5">—</div><div class="sub" data-i18n="ov.mbps"></div></div>
+        </div>
+        <div class="ov-charts">
+            <div class="card"><div class="card-head"><div class="card-title" data-i18n="ov.trend"></div><div class="card-note" id="ovTrendNote"></div></div><div class="chart-box"><canvas id="chOvTrend"></canvas></div></div>
+            <div class="card"><div class="card-head"><div class="card-title" data-i18n="ov.split"></div></div><div class="chart-box"><canvas id="chOvSplit"></canvas></div></div>
+            <div class="card"><div class="card-head"><div class="card-title" data-i18n="ov.monthly"></div><div class="card-note" id="ovMonthlyNote"></div></div><div class="chart-box"><canvas id="chOvMonthly"></canvas></div></div>
+            <div class="card">
+                <div class="card-head"><div class="card-title" data-i18n="ov.throughput"></div><div class="card-note" data-i18n="ov.throughputNote"></div></div>
+                <div class="chart-pair">
+                    <div><div class="chart-sub" data-i18n="rf.band24"></div><div class="chart-box"><canvas id="chOvTp24"></canvas></div></div>
+                    <div><div class="chart-sub" data-i18n="rf.band5"></div><div class="chart-box"><canvas id="chOvTp5"></canvas></div></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── Work Orders ─── -->
+    <section class="page" id="page-workorders" hidden>
+        <div class="card">
+            <div class="toolbar mb">
+                <input class="input" type="search" id="woSearch" data-i18n-placeholder="wo.searchPh" data-i18n-aria="common.search">
+                <span class="spacer"></span>
+                <span class="muted" id="woCount"></span>
+            </div>
+            <div class="table-wrap scroll">
+                <table>
+                    <thead><tr>
+                        <th data-i18n="wo.col.wo"></th><th data-i18n="wo.col.product"></th><th data-i18n="wo.col.last"></th>
+                        <th class="num" data-i18n="wo.col.units"></th><th class="num">PASS</th><th class="num">FAIL</th>
+                        <th class="num" data-i18n="wo.col.yield"></th><th class="num" data-i18n="wo.col.retry"></th>
+                        <th class="num" data-i18n="wo.col.avg24"></th><th class="num" data-i18n="wo.col.avg5"></th>
+                        <th class="num" data-i18n="wo.col.duration"></th><th class="num" data-i18n="wo.col.uph"></th>
+                        <th data-i18n="wo.col.report"></th>
+                    </tr></thead>
+                    <tbody id="woRows"></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── Fail List ─── -->
+    <section class="page" id="page-fails" hidden>
+        <div class="card">
+            <div class="toolbar mb">
+                <input class="input" type="search" id="failSearch" data-i18n-placeholder="fails.searchPh" data-i18n-aria="common.search">
+                <span class="spacer"></span>
+                <span class="muted" id="failCount"></span>
+            </div>
+            <div class="table-wrap scroll">
+                <table>
+                    <thead><tr>
+                        <th data-i18n="fails.col.time"></th><th data-i18n="wo.col.wo"></th><th data-i18n="wo.col.product"></th>
+                        <th>SN</th><th data-i18n="fails.col.mac"></th><th data-i18n="fails.col.reason"></th>
+                        <th class="num" data-i18n="fails.col.tp24"></th><th class="num" data-i18n="fails.col.tp5"></th>
+                        <th class="num" data-i18n="fails.col.rssi5"></th><th class="num" data-i18n="fails.col.runs"></th><th data-i18n="fails.col.log"></th>
+                    </tr></thead>
+                    <tbody id="failRows"></tbody>
+                </table>
+            </div>
+            <div class="pager" id="failPager"></div>
+        </div>
+    </section>
+
+    <!-- ─── RF Analysis ─── -->
+    <section class="page" id="page-rf" hidden>
+        <div class="toolbar">
+            <div class="tabs" role="tablist" data-i18n-aria="rf.tabAria">
+                <button class="tab" role="tab" type="button" data-rf-tab="24g" aria-selected="true" data-i18n="rf.band24"></button>
+                <button class="tab" role="tab" type="button" data-rf-tab="5g" aria-selected="false" data-i18n="rf.band5"></button>
+                <button class="tab" role="tab" type="button" data-rf-tab="bt" aria-selected="false" data-i18n="rf.bt"></button>
+            </div>
+            <span class="spacer"></span>
+            <span class="muted" id="rfNote"></span>
+        </div>
+        <div data-rf-view="24g">
+            <div class="tiles" id="rfTiles24"></div>
+            <div class="grid cols-2">
+                <div class="card"><div class="card-head"><div class="card-title" data-i18n="rf.trend"></div><div class="card-note" id="rfTrendNote24"></div></div><div class="chart-box tall"><canvas id="chRfTrend24"></canvas></div></div>
+                <div class="card"><div class="card-head"><div class="card-title" data-i18n="rf.dist"></div><div class="card-note" data-i18n="rf.distNote24"></div></div><div class="chart-box tall"><canvas id="chRfDist24"></canvas></div></div>
+            </div>
+        </div>
+        <div data-rf-view="5g" hidden>
+            <div class="tiles" id="rfTiles5"></div>
+            <div class="grid cols-2">
+                <div class="card"><div class="card-head"><div class="card-title" data-i18n="rf.trend"></div><div class="card-note" id="rfTrendNote5"></div></div><div class="chart-box tall"><canvas id="chRfTrend5"></canvas></div></div>
+                <div class="card"><div class="card-head"><div class="card-title" data-i18n="rf.dist"></div><div class="card-note" data-i18n="rf.distNote5"></div></div><div class="chart-box tall"><canvas id="chRfDist5"></canvas></div></div>
+            </div>
+            <div class="card">
+                <div class="card-head"><div class="card-title" data-i18n="rf.stdTop"></div><div class="card-note" data-i18n="rf.stdTopNote"></div></div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr>
+                            <th>SN</th><th data-i18n="wo.col.wo"></th><th data-i18n="wo.col.product"></th><th data-i18n="fails.col.time"></th>
+                            <th class="num" data-i18n="rf.col.avg5"></th><th class="num" data-i18n="rf.col.std5"></th>
+                            <th class="num" data-i18n="rf.col.std24"></th><th class="num" data-i18n="fails.col.rssi5"></th>
+                        </tr></thead>
+                        <tbody id="rfStdRows"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div data-rf-view="bt" hidden>
+            <div class="tiles" id="rfTilesBt"></div>
+            <div class="card"><div class="card-head"><div class="card-title" data-i18n="rf.btDist"></div><div class="card-note" data-i18n="rf.btDistNote"></div></div><div class="chart-box tall"><canvas id="chRfBt"></canvas></div></div>
+        </div>
+    </section>
+
+    <!-- ─── Production ─── -->
+    <section class="page" id="page-production" hidden>
+        <div class="tiles" id="prTiles"></div>
+        <div class="grid cols-2">
+            <div class="card"><div class="card-head"><div class="card-title" data-i18n="pr.rate"></div><div class="card-note" data-i18n="pr.rateNote"></div></div><div class="chart-box tall"><canvas id="chPrRate"></canvas></div></div>
+            <div class="card"><div class="card-head"><div class="card-title" data-i18n="pr.dist"></div><div class="card-note" data-i18n="pr.distNote"></div></div><div class="chart-box tall"><canvas id="chPrDist"></canvas></div></div>
+        </div>
+        <div class="card">
+            <div class="card-head"><div class="card-title" data-i18n="pr.hourly"></div><div class="card-note" id="prHourlyNote"></div></div>
+            <div class="chart-box"><canvas id="chPrHourly"></canvas></div>
+        </div>
+        <div class="card">
+            <div class="card-head"><div class="card-title" data-i18n="pr.table"></div><div class="card-note" id="prCount"></div></div>
+            <div class="table-wrap scroll">
+                <table>
+                    <thead><tr>
+                        <th data-i18n="wo.col.wo"></th><th data-i18n="wo.col.product"></th><th data-i18n="pr.col.start"></th><th data-i18n="pr.col.end"></th>
+                        <th class="num" data-i18n="pr.col.hours"></th><th class="num" data-i18n="wo.col.units"></th>
+                        <th class="num" data-i18n="wo.col.uph"></th><th class="num" data-i18n="pr.col.minPerUnit"></th><th class="num" data-i18n="wo.col.yield"></th>
+                    </tr></thead>
+                    <tbody id="prRows"></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── DB Maintenance (DB Tweak) ─── -->
+    <section class="page" id="page-dbtweak" hidden>
+        <div class="card login-card" id="twLogin" hidden>
+            <h3 data-i18n="tw.loginTitle"></h3>
+            <p data-i18n="tw.loginDesc"></p>
+            <div class="field"><label for="twUser" data-i18n="common.username"></label><input class="input" id="twUser" autocomplete="username"></div>
+            <div class="field"><label for="twPass" data-i18n="common.password"></label><input class="input" type="password" id="twPass" autocomplete="current-password"></div>
+            <button class="btn primary full" type="button" id="btnTwLogin" data-i18n="common.signIn"></button>
+            <div class="form-msg" id="twLoginMsg" aria-live="polite"></div>
+        </div>
+        <div class="stack" id="twPanel" hidden>
+            <div class="notice" data-i18n="tw.intro"></div>
+            <div class="card">
+                <div class="toolbar mb">
+                    <label class="muted" for="twProduct" data-i18n="wo.col.product"></label>
+                    <select class="select" id="twProduct"></select>
+                    <label class="muted" for="twWo" data-i18n="wo.col.wo"></label>
+                    <select class="select" id="twWo"></select>
+                    <label class="muted" for="twLimit" data-i18n="tw.limit"></label>
+                    <select class="select" id="twLimit"><option>100</option><option selected>500</option><option>1000</option><option>2000</option></select>
+                    <button class="btn small" type="button" id="btnTwReload" data-i18n="fresh.refresh"></button>
+                    <span class="spacer"></span>
+                    <span class="muted" id="twCount"></span>
+                    <button class="btn danger" type="button" id="btnTwDeleteWo" data-i18n="tw.deleteWo"></button>
+                </div>
+                <div class="table-wrap scroll">
+                    <table>
+                        <thead><tr>
+                            <th data-i18n="tw.col.id"></th><th data-i18n="fails.col.time"></th><th data-i18n="wo.col.wo"></th><th data-i18n="wo.col.product"></th>
+                            <th>SN</th><th data-i18n="fails.col.result"></th><th>WiFi</th><th>BT</th>
+                            <th class="num" data-i18n="fails.col.tp24"></th><th class="num" data-i18n="fails.col.tp5"></th>
+                            <th data-i18n="tw.col.source"></th><th data-i18n="tw.col.actions"></th>
+                        </tr></thead>
+                        <tbody id="twRows"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    </div>
+</main>
+</div>
+
+<!-- ═══ AI report ═══ -->
+<div class="modal" id="reportModal" role="dialog" aria-modal="true" aria-labelledby="rpTitle" hidden>
+    <div class="modal-panel wide">
+        <div class="modal-head">
+            <div class="modal-title" id="rpTitle"></div>
+            <span class="muted" id="rpGenerated"></span>
+            <div class="seg" role="group" id="rpLang" data-i18n-aria="rp.langAria">
+                <button type="button" data-lang="zh" aria-pressed="true" data-i18n="rp.zh"></button>
+                <button type="button" data-lang="en" aria-pressed="false" data-i18n="rp.en"></button>
+            </div>
+            <button class="btn small" type="button" id="btnRpCopy" data-i18n="rp.copy"></button>
+            <button class="btn small" type="button" id="btnRpDownload" data-i18n="rp.download"></button>
+            <button class="btn small" type="button" id="btnRpRegen" data-i18n="rp.regen"></button>
+            <button class="icon-btn" type="button" id="btnRpClose" data-i18n-aria="common.close">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="rpBanner"></div>
+            <div class="rp-facts" id="rpFacts"></div>
+            <div class="rp-text" id="rpBody"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Form dialog ═══ -->
+<div class="modal" id="formModal" role="dialog" aria-modal="true" aria-labelledby="formModalTitle" hidden>
+    <form class="modal-panel" id="formModalForm" novalidate>
+        <div class="modal-head"><div class="modal-title" id="formModalTitle"></div></div>
+        <div class="modal-body">
+            <p class="muted mb" id="formModalDesc"></p>
+            <div id="formModalFields"></div>
+            <div class="form-msg" id="formModalMsg" aria-live="polite"></div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn" type="button" id="btnFormModalCancel" data-i18n="common.cancel"></button>
+            <button class="btn primary" type="submit" id="btnFormModalSubmit"></button>
+        </div>
+    </form>
+</div>
+</body>
+</html>

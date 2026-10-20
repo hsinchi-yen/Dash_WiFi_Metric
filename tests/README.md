@@ -9,3 +9,6 @@
 
 History: the 2026-10-20 backend refactor (routers/services, `mv_unit`) was verified with
 40/40 identical responses against the pre-refactor capture (tag `baseline-20261020`).
+
+| `node tests/js/i18n_keys.mjs` | Every `t('key')` / `data-i18n` key used by `web/` exists in both dictionaries; both have the same keys and `{variables}`; no Chinese in the English strings. |
+| `python3 tests/e2e_screens.py [BASE] [OUT_DIR]` | Playwright smoke run of the web/ dashboard (every page, RF tabs, filters, Dark/Light, EN/中文, phone); fails on console errors or HTTP ≥ 400. |

@@ -1,16 +1,34 @@
-"""Public dashboard data. Signatures and responses are unchanged from the single-file
-API (tests/golden.py); /api/overview is new and bundles what one page load needs."""
+"""Public dashboard data.
+
+Two families:
+- the original endpoints (/api/dashboard/*, /api/products, /api/workorders, /api/fails,
+  /api/retries): signatures and responses unchanged (tests/golden.py), still used by the
+  single-file dashboard;
+- range-scoped endpoints for the web/ front end (/api/overview, /api/filter-options,
+  /api/work-order-summary, /api/fail-list, /api/rf, /api/raw-log/{id}): date_from / date_to
+  (inclusive ISO dates, both empty = all data) + work_order + product_model.
+"""
+from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, Query
+from fastapi.responses import Response
 
-from services import stats
+from errors import not_found, Msg
+from services import analytics, stats
 
 router = APIRouter(tags=["analytics"])
 
 Scope = Query(default="latest_day", pattern="^(latest_day|year)$")
 Year = Query(default=None, ge=2000, le=2100)
+IsoDate = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
 
+
+def _opt(value: Optional[str]) -> Optional[str]:
+    return value if value and value != "ALL" else None
+
+
+# ─── Original endpoints (golden-guarded) ─────────────────────────────────────
 
 @router.get("/api/dashboard/summary")
 def dashboard_summary(work_order: Optional[str] = None, product_model: Optional[str] = None,
@@ -92,30 +110,48 @@ def retries(limit: int = Query(default=200, ge=1, le=1000), product_model: Optio
     return stats.retries(limit, product_model)
 
 
+# ─── Range-scoped endpoints for the web/ front end ───────────────────────────
+
+@router.get("/api/filter-options")
+def filter_options() -> dict[str, Any]:
+    return analytics.filter_options()
+
+
 @router.get("/api/overview")
-def overview(work_order: Optional[str] = None, product_model: Optional[str] = None,
-             scope: str = Query(default="year", pattern="^(latest_day|year)$"), year: Optional[int] = Year,
-             limit: int = Query(default=200, ge=1, le=500)) -> dict[str, Any]:
-    """Everything the dashboard page loads, in one response (replaces 15 parallel requests)."""
-    wo = work_order if work_order and work_order != "ALL" else None
-    pm = product_model if product_model and product_model != "ALL" else None
-    return {
-        "summary": stats.summary(wo, pm, scope, year),
-        "split": stats.pass_fail_split(wo, pm, scope, year),
-        "trend_hour": stats.yield_trend(wo, pm, "latest_day", None),
-        "trend_month": stats.yield_trend(wo, pm, "year", year),
-        "throughput": stats.throughput_distribution(wo, pm, scope, year),
-        "latest_work_order": stats.latest_workorder_hourly(wo, pm, 2),
-        "years": stats.available_years(wo, pm),
-        "products": stats.products(limit, scope, year),
-        "work_orders": stats.work_orders(limit, pm, scope, year),
-        "fails": stats.fails(300, pm),
-        "retries": stats.retries(300, pm),
-        "rf": {
-            "window": stats.rf_window(wo, pm),
-            "trend": stats.rf_throughput_trend(wo, pm),
-            "percentiles": stats.rf_percentiles(wo, pm),
-            "stddev": stats.rf_stddev(wo, pm, 20),
-        },
-        "refreshed_at": stats.refreshed_at(),
-    }
+def overview(date_from: Optional[str] = IsoDate, date_to: Optional[str] = IsoDate,
+             work_order: Optional[str] = None, product_model: Optional[str] = None) -> dict[str, Any]:
+    """Everything the dashboard page shows, in one response."""
+    data = analytics.overview(date_from, date_to, _opt(work_order), _opt(product_model))
+    data["refreshed_at"] = stats.refreshed_at()
+    return data
+
+
+@router.get("/api/work-order-summary")
+def work_order_summary(date_from: Optional[str] = IsoDate, date_to: Optional[str] = IsoDate,
+                       work_order: Optional[str] = None, product_model: Optional[str] = None) -> list[dict[str, Any]]:
+    return analytics.work_order_summary(date_from, date_to, _opt(work_order), _opt(product_model))
+
+
+@router.get("/api/fail-list")
+def fail_list(date_from: Optional[str] = IsoDate, date_to: Optional[str] = IsoDate,
+              work_order: Optional[str] = None, product_model: Optional[str] = None,
+              search: Optional[str] = Query(default=None, max_length=64),
+              page: int = Query(default=1, ge=1), page_size: int = Query(default=50, ge=1, le=500)) -> dict[str, Any]:
+    return analytics.fail_list(date_from, date_to, _opt(work_order), _opt(product_model), search, page, page_size)
+
+
+@router.get("/api/rf")
+def rf(date_from: Optional[str] = IsoDate, date_to: Optional[str] = IsoDate,
+       work_order: Optional[str] = None, product_model: Optional[str] = None) -> dict[str, Any]:
+    return analytics.rf(date_from, date_to, _opt(work_order), _opt(product_model))
+
+
+@router.get("/api/raw-log/{record_id}")
+def raw_log(record_id: int):
+    """The original test log of one record, as a text download."""
+    row = analytics.raw_log(record_id)
+    if not row or not row.get("raw_log"):
+        raise not_found(Msg(f"找不到 log：id={record_id}", f"Log not found: id={record_id}"))
+    name = Path(str(row.get("source_file") or f"log_{record_id}.txt").replace("\\", "/")).name
+    return Response(content=row["raw_log"], media_type="text/plain; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
