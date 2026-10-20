@@ -46,3 +46,4 @@ node_modules/
 
 # ── Legacy scripts with embedded credentials (kept on disk, out of git) ───
 tools/
+tests/golden/
