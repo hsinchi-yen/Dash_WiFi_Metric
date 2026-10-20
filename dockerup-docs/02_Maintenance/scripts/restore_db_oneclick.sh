@@ -118,7 +118,7 @@ restore_cold() {
   tar -C "${BASE}/docker-data" -xzf "${ARCHIVE}"
 
   log "fixing ownership for postgres"
-  chown -R 999:999 "${pgdata_dir}"
+  chown -R 70:70 "${pgdata_dir}"
 
   log "starting stack"
   docker compose -f "${COMPOSE_FILE}" up -d

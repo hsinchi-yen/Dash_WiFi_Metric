@@ -98,7 +98,7 @@ mkdir -p $STORAGE_PATH/docker-data/app-logs
 
 # 設置權限
 chmod -R 755 $STORAGE_PATH/docker-data
-chown -R 999:999 $STORAGE_PATH/docker-data/pgdata  # PostgreSQL 用戶
+chown -R 70:70 $STORAGE_PATH/docker-data/pgdata  # PostgreSQL 用戶
 chown -R 472:472 $STORAGE_PATH/docker-data/grafana-data  # Grafana 用戶
 
 echo "✓ Docker 數據目錄已創建"

@@ -14,8 +14,8 @@ This SOP defines standard operations to:
 - Verify data integrity after backup/restore
 
 Scripts used:
-- dockerup-docs/scripts/backup_db_oneclick.sh
-- dockerup-docs/scripts/restore_db_oneclick.sh
+- dockerup-docs/02_Maintenance/scripts/backup_db_oneclick.sh
+- dockerup-docs/02_Maintenance/scripts/restore_db_oneclick.sh
 
 ---
 
@@ -31,7 +31,7 @@ Required conditions:
 Quick checks:
 1. sudo docker ps
 2. ls -lah /mnt/md127/WIFI_YFP_DashBoard
-3. ls -lah /mnt/md127/WIFI_YFP_DashBoard/dockerup-docs/scripts
+3. ls -lah /mnt/md127/WIFI_YFP_DashBoard/dockerup-docs/02_Maintenance/scripts
 
 ---
 
@@ -45,7 +45,7 @@ Use when:
 - Need highest portability
 
 Run:
-1. cd /mnt/md127/WIFI_YFP_DashBoard/dockerup-docs/scripts
+1. cd /mnt/md127/WIFI_YFP_DashBoard/dockerup-docs/02_Maintenance/scripts
 2. chmod +x backup_db_oneclick.sh
 3. sudo ./backup_db_oneclick.sh
 
@@ -63,7 +63,7 @@ Use when:
 - Source and target PostgreSQL major versions are guaranteed compatible
 
 Run:
-1. cd /mnt/md127/WIFI_YFP_DashBoard/dockerup-docs/scripts
+1. cd /mnt/md127/WIFI_YFP_DashBoard/dockerup-docs/02_Maintenance/scripts
 2. sudo MODE=cold ./backup_db_oneclick.sh
 
 Output:
@@ -82,7 +82,7 @@ Input archive type:
 - db_backup_YYYYMMDD_HHMMSS.tar.gz
 
 Run:
-1. cd /mnt/md127/WIFI_YFP_DashBoard/dockerup-docs/scripts
+1. cd /mnt/md127/WIFI_YFP_DashBoard/dockerup-docs/02_Maintenance/scripts
 2. chmod +x restore_db_oneclick.sh
 3. sudo ARCHIVE=/mnt/md127/WIFI_YFP_DashBoard/backups/db_backup_YYYYMMDD_HHMMSS.tar.gz ./restore_db_oneclick.sh
 
@@ -100,14 +100,14 @@ Input archive type:
 - pgdata_YYYYMMDD_HHMMSS.tar.gz
 
 Run:
-1. cd /mnt/md127/WIFI_YFP_DashBoard/dockerup-docs/scripts
+1. cd /mnt/md127/WIFI_YFP_DashBoard/dockerup-docs/02_Maintenance/scripts
 2. sudo MODE=cold ARCHIVE=/mnt/md127/WIFI_YFP_DashBoard/backups/pgdata_YYYYMMDD_HHMMSS.tar.gz ./restore_db_oneclick.sh
 
 What script does:
 1. Stop full stack
 2. Clear docker-data/pgdata
 3. Extract pgdata archive
-4. Fix ownership to 999:999
+4. Fix ownership to 70:70 (postgres:16-alpine runs as uid 70)
 5. Start full stack
 6. Validate row count in test_record
 
@@ -137,7 +137,7 @@ If restore fails:
 3. Prefer logical restore for cross-host recovery
 
 If cold restore fails to start postgres:
-1. Check ownership: sudo chown -R 999:999 /mnt/md127/WIFI_YFP_DashBoard/docker-data/pgdata
+1. Check ownership: sudo chown -R 70:70 /mnt/md127/WIFI_YFP_DashBoard/docker-data/pgdata
 2. Check container logs: sudo docker logs wifitest-db
 3. Retry restore with logical archive
 
@@ -171,7 +171,7 @@ Cold restore:
 
 ## 9. Related Files
 
-- dockerup-docs/scripts/backup_db_oneclick.sh
-- dockerup-docs/scripts/restore_db_oneclick.sh
+- dockerup-docs/02_Maintenance/scripts/backup_db_oneclick.sh
+- dockerup-docs/02_Maintenance/scripts/restore_db_oneclick.sh
 - dockerup-essential/docker-compose.yml
-- dockerup-docs/README_MIGRATION_QUICKSTART.md
+- dockerup-docs/01_Deployment/README_MIGRATION_QUICKSTART.md

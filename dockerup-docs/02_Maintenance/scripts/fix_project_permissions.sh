@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_ROOT="${PROJECT_ROOT:-/mnt/md0/WIFI_YFP_DashBoard}"
+PROJECT_ROOT="${PROJECT_ROOT:-/mnt/md127/WIFI_YFP_DashBoard}"
 LOGIN_USER="${LOGIN_USER:-sit}"
 LOGIN_GROUP="${LOGIN_GROUP:-sit}"
 POSTGRES_UID="${POSTGRES_UID:-999}"
@@ -15,9 +15,9 @@ if [[ ! -d "${PROJECT_ROOT}" ]]; then
 fi
 
 echo "[1/6] ensure top-level project paths are owned by ${LOGIN_USER}:${LOGIN_GROUP}"
-chown "${LOGIN_USER}:${LOGIN_GROUP}" /mnt/md0 || true
+chown "${LOGIN_USER}:${LOGIN_GROUP}" /mnt/md127 || true
 chown -R "${LOGIN_USER}:${LOGIN_GROUP}" "${PROJECT_ROOT}"
-chmod 775 /mnt/md0 || true
+chmod 775 /mnt/md127 || true
 chmod 775 "${PROJECT_ROOT}"
 
 for path in \
@@ -57,7 +57,7 @@ if getent group docker >/dev/null 2>&1; then
 fi
 
 echo "[6/6] summary"
-ls -ld /mnt/md0 "${PROJECT_ROOT}" || true
+ls -ld /mnt/md127 "${PROJECT_ROOT}" || true
 ls -ld "${PROJECT_ROOT}/docker-data/pgdata" "${PROJECT_ROOT}/docker-data/grafana-data" "${PROJECT_ROOT}/docker-data/app-logs" 2>/dev/null || true
 id "${LOGIN_USER}" || true
 

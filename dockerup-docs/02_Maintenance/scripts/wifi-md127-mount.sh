@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MOUNT_POINT="${MOUNT_POINT:-/mnt/md0}"
+MOUNT_POINT="${MOUNT_POINT:-/mnt/md127}"
 DEVICE="${DEVICE:-}"
 FS_TYPE="${FS_TYPE:-ext4}"
 UUID_VALUE="${UUID_VALUE:-}"

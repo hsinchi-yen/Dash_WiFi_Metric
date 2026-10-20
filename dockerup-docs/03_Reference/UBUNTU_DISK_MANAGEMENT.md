@@ -141,7 +141,7 @@ sudo mkdir -p /mnt/wifi-storage/docker-data/{pgdata,grafana-data,app-logs}
 
 # 設置權限
 # PostgreSQL 用戶 UID:999，GID:999
-sudo chown -R 999:999 /mnt/wifi-storage/docker-data/pgdata
+sudo chown -R 70:70 /mnt/wifi-storage/docker-data/pgdata
 sudo chmod 700 /mnt/wifi-storage/docker-data/pgdata
 
 # Grafana 用戶 UID:472，GID:472
@@ -426,7 +426,7 @@ id grafana
 id $USER
 
 # 修復所有權
-sudo chown -R 999:999 /mnt/wifi-storage/docker-data/pgdata
+sudo chown -R 70:70 /mnt/wifi-storage/docker-data/pgdata
 sudo chown -R 472:472 /mnt/wifi-storage/docker-data/grafana-data
 ```
 
