@@ -1,15 +1,48 @@
-# PostgreSQL data (exclude database files)
-dockerup-essential/docker-data/pgdata/
-dockerup-essential/docker-data/postgres/
-dockerup-essential/docker-data/postgresql/
-**/pg_wal/
-**/base/
+# ── Secrets / local config ────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+docker-compose.override.yml
+docker-compose.local.yml
 
-# Backup dumps
+# ── Data, backups, uploads (never in git) ─────────────────────────────────
 DB_backups/
-**/*.dump
-**/*.sql.gz
+backups/
+**/docker-data/
+**/pgdata/
+**/grafana-data/
+**/app-logs/
+**/pg_wal/
+*.dump
+*.sql.gz
+*.tar.gz
+*.tgz
+*.bak
+rawlogs/
+_remote_snapshot/
+oldbackup/
 
-# Python cache
-**/__pycache__/
-**/*.pyc
+# ── Build artefacts (PyInstaller) ─────────────────────────────────────────
+dockerup-essential/build/
+dockerup-essential/dist/
+*.spec
+
+# ── Python / Node ─────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+node_modules/
+
+# ── Local tooling (AI agents, editors) ────────────────────────────────────
+.claude/
+.claude-plugin/
+.opencode/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# ── Legacy scripts with embedded credentials (kept on disk, out of git) ───
+tools/
