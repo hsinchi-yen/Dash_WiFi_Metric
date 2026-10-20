@@ -288,6 +288,22 @@ def main():
     status, _ = up.delete(f"/api/log-upload/{uid}")
     check("second revert refused", status == 400)
 
+    # two batches on the same work order, undone oldest-first: the plan follows the newest remaining batch, then disappears
+    ids = []
+    for qty in ("252", "300"):
+        status, data = up.multipart("/api/log-upload/analyze", [("file", "5101-251216015.zip", sample_bytes)])
+        ids.append(data["upload_id"])
+        up.ndjson("/api/log-upload/commit", {"upload_id": ids[-1], "work_order": "5101-251216015", "product": "TN-99_EDM1-IMX6P",
+                                             "planned_qty": qty, "ack_warnings": False, "mode": "form"})
+    status, ov = up.get("/api/overview?work_order=5101-251216015")
+    check("plan follows the newest batch (300)", ov.get("plan", {}) and ov["plan"]["planned"] == 300, ov.get("plan"))
+    up.delete(f"/api/log-upload/{ids[0]}")
+    status, ov = up.get("/api/overview?work_order=5101-251216015")
+    check("undoing the older batch keeps the newer plan (300)", ov.get("plan", {}) and ov["plan"]["planned"] == 300, ov.get("plan"))
+    up.delete(f"/api/log-upload/{ids[1]}")
+    status, ov = up.get("/api/overview?work_order=5101-251216015")
+    check("undoing the last batch removes the plan", ov.get("plan") is None, ov.get("plan"))
+
     # ── commit: real insert with a new product and a new WO, then revert ──
     mod = modified_zip(SAMPLE)
     status, data = up.multipart("/api/log-upload/analyze", [("file", "5101-251216015.zip", mod)])
