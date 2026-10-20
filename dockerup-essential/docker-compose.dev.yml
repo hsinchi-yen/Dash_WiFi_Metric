@@ -1,0 +1,9 @@
+# Development override: mount the sources so edits show up without rebuilding the image.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# After editing Python, restart the api container (uvicorn does not run with --reload).
+services:
+  api:
+    volumes:
+      - ./api:/app
+      - ./log_parser.py:/app/log_parser.py
+      - ./wifi_dashboard.html:/app/wifi_dashboard.html

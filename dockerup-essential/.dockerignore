@@ -1,0 +1,12 @@
+docker-data
+build
+dist
+logs
+WiFiTestLogs
+grafana
+__pycache__
+*.pyc
+.pytest_cache
+.env
+.env.*
+*.spec

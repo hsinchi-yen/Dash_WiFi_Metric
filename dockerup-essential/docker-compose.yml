@@ -69,22 +69,29 @@ services:
         condition: service_healthy
 
   api:
-    build: ./api
+    build:
+      context: .                  # api/ plus the shared log_parser.py and the dashboard HTML
+      dockerfile: api/Dockerfile
+    image: wifitest-api:${APP_VERSION:-0.2.0}
     container_name: wifitest-api
     restart: unless-stopped
-    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
     environment:
       DATABASE_URL: postgresql://qc:qcpass@postgres/wifitest
       PYTHONUNBUFFERED: "1"
-      ADMIN_TOKEN: ${ADMIN_TOKEN:-}   # guards /api/ingest and /api/admin/*; unset = those endpoints disabled
+      APP_VERSION: ${APP_VERSION:-0.2.0}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}               # guards /api/ingest and /api/admin/*; unset = disabled
+      LLM_API_BASE: ${LLM_API_BASE:-http://10.20.30.23:8000/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-tn8227}
+      LLM_MODEL: ${LLM_MODEL:-Qwen3.6-35B-A3B-Q6_K}
+      STATS_REFRESH_SEC: ${STATS_REFRESH_SEC:-300}   # mv_unit refresh interval (also refreshed after ingest/deletes)
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
-      - ./logs:/app/logs          # mount your log folder here
+      - ./logs:/app/logs          # batch-ingest folder (docker exec … log_parser.py /app/logs)
       - ./WiFiTestLogs:/app/WiFiTestLogs
       - ${STORAGE_PATH:-/mnt/md127/WIFI_YFP_DashBoard}/docker-data/app-logs:/app/runtime-logs
-      - ./api/app.py:/app/app.py
-      - ./api/ai_summary_helper.py:/app/ai_summary_helper.py
-      - ./log_parser.py:/app/log_parser.py
-      - ./wifi_dashboard.html:/app/wifi_dashboard.html
+    # Code is baked into the image. For development mount the sources instead:
+    #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
     ports:
       - "8000:8000"
     depends_on:
