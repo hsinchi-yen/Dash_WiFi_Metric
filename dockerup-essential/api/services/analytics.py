@@ -311,13 +311,25 @@ def filter_options() -> dict[str, Any]:
 
 # ─── Fail list (paged) ───────────────────────────────────────────────────────
 
+# A failed unit's latest run is its FAIL, so its disposition is the hand-set one or "open" (fail_actions.effective).
+DISPOSITION_SQL = f"COALESCE((SELECT d.status FROM fail_disposition d WHERE d.record_id = {UNIT}.id), 'open')"
+PENDING_SQL = f"{DISPOSITION_SQL} IN ('open', 'retest')"
+
+
 def fail_list(date_from, date_to, work_order, product_model, search: Optional[str],
-              page: int, page_size: int) -> dict[str, Any]:
+              page: int, page_size: int, disposition: Optional[str] = None) -> dict[str, Any]:
+    """Failed units (latest test FAIL). disposition: None = all, 'pending' = open / retest, 'handled' = the rest."""
     window = resolve_range_window(date_from, date_to)
     where, params = range_where(window, work_order, product_model, "result = FALSE")
     if search:
         where += " AND (sn ILIKE %s OR wifi_mac ILIKE %s OR bt_mac ILIKE %s OR work_order ILIKE %s OR product_model ILIKE %s)"
         params += [f"%{search}%"] * 5
+    counts = db.rows(f"SELECT COUNT(*) AS n, COUNT(*) FILTER (WHERE {PENDING_SQL}) AS pending FROM {UNIT} {where}", tuple(params))[0]
+    counts = {"all": int(counts["n"]), "pending": int(counts["pending"]), "handled": int(counts["n"]) - int(counts["pending"])}
+    if disposition == "pending":
+        where += f" AND {PENDING_SQL}"
+    elif disposition == "handled":
+        where += f" AND NOT ({PENDING_SQL})"
     total = int(db.rows(f"SELECT COUNT(*) AS n FROM {UNIT} {where}", tuple(params))[0]["n"])
     pages = max(1, math.ceil(total / page_size))
     page = min(max(1, page), pages)
@@ -333,7 +345,7 @@ def fail_list(date_from, date_to, work_order, product_model, search: Optional[st
     for r in items:
         for k in ("avg_24g", "avg_5g", "rssi_delta_24g", "rssi_delta_5g"):
             r[k] = _num(r[k])
-    return {"items": items, "total": total, "page": page, "pages": pages, "page_size": page_size}
+    return {"items": items, "total": total, "page": page, "pages": pages, "page_size": page_size, "counts": counts}
 
 
 def raw_log(record_id: int) -> Optional[dict[str, Any]]:

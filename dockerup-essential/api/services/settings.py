@@ -26,6 +26,7 @@ DEFAULTS: dict[str, Any] = {
     "work_start": "07:00",               # single shift (Q3): the hours the line normally tests
     "work_end": "19:00",
     "active_minutes": 120,               # a test within this many minutes → "in progress"
+    "idle_warn_minutes": 30,             # Today page: no new test for this long during working hours → amber
     "done_idle_hours": 24,               # no new test for this long → "done" (the final report is written then)
     "fail_streak": 3,                    # this many different units failing in a row → flag
     "tp_drop_pct": 20,                   # median throughput this far below the product's usual → flag
@@ -33,7 +34,7 @@ DEFAULTS: dict[str, Any] = {
     "uph_targets": {},                   # product → units per hour; unset = the product's history median
 }
 
-INT_RANGES = {"active_minutes": (10, 1440), "done_idle_hours": (1, 720), "fail_streak": (2, 50),
+INT_RANGES = {"active_minutes": (10, 1440), "idle_warn_minutes": (5, 600), "done_idle_hours": (1, 720), "fail_streak": (2, 50),
               "tp_drop_pct": (5, 90), "behind_pct": (5, 90)}
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import Response
 
 from errors import not_found, Msg
-from services import analytics, fail_classify, stats, wo_notes, wo_status
+from services import analytics, fail_classify, fail_disposition, stats, today, wo_notes, wo_status
 
 router = APIRouter(tags=["analytics"])
 
@@ -129,6 +129,14 @@ def overview(date_from: Optional[str] = iso_date(), date_to: Optional[str] = iso
     return data
 
 
+@router.get("/api/today")
+def today_page(day: Optional[str] = iso_date()) -> dict[str, Any]:
+    """The Today page (5C): one calendar day of the line (default today, test-station clock)."""
+    data = today.today(day)
+    data["refreshed_at"] = stats.refreshed_at()
+    return data
+
+
 @router.get("/api/work-order-summary")
 def work_order_summary(date_from: Optional[str] = iso_date(), date_to: Optional[str] = iso_date(),
                        work_order: Optional[str] = None, product_model: Optional[str] = None) -> list[dict[str, Any]]:
@@ -148,11 +156,15 @@ def work_order_summary(date_from: Optional[str] = iso_date(), date_to: Optional[
 def fail_list(date_from: Optional[str] = iso_date(), date_to: Optional[str] = iso_date(),
               work_order: Optional[str] = None, product_model: Optional[str] = None,
               search: Optional[str] = Query(default=None, max_length=64),
-              page: int = Query(default=1, ge=1), page_size: int = Query(default=50, ge=1, le=500)) -> dict[str, Any]:
-    data = analytics.fail_list(date_from, date_to, _opt(work_order), _opt(product_model), search, page, page_size)
+              page: int = Query(default=1, ge=1), page_size: int = Query(default=50, ge=1, le=500),
+              disposition: Optional[str] = Query(default=None, pattern="^(pending|handled)$")) -> dict[str, Any]:
+    """Failed units (latest test FAIL) with their classification (5F), suggested next step and disposition (5C).
+    `counts` = all / pending / handled in the scope and search, whatever `disposition` shows."""
+    data = analytics.fail_list(date_from, date_to, _opt(work_order), _opt(product_model), search, page, page_size, disposition)
     found = fail_classify.for_records([r["id"] for r in data["items"]])
     for r in data["items"]:
         r["analysis"] = found.get(int(r["id"]))      # 5F classification of this FAIL run (None until classified)
+    fail_disposition.decorate(data["items"], found)
     return data
 
 

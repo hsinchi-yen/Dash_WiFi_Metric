@@ -153,7 +153,7 @@ def _generate(cur, row) -> None:
         UPDATE ai_reports SET status = 'done', text = %s, data_hash = %s, model = %s, error = NULL,
                               finished_at = NOW(), elapsed_sec = %s
         WHERE id = %s
-    """, (text, digest, config.LLM_MODEL, elapsed, row["id"]))
+    """, (text, digest, llm.model_name(), elapsed, row["id"]))
     log.info("report %s/%s generated in %.0f s", work_order, lang, elapsed)
 
 

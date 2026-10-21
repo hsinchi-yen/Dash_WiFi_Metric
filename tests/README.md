@@ -51,3 +51,20 @@ LLM budget (2026-10-21):
 | Command | What it does |
 |---|---|
 | `python3 tests/acceptance_llm_budget.py [BASE]` | The legacy AI report carousel is refused (410) and the legacy summary serves the stored report without an LLM call; opening an old report queues nothing; the legacy page has no AI report menu item or carousel step; AI-worded notes only for red / amber work orders; `/api/llm-usage` counts calls by purpose. |
+
+Phase 5C (Today page, FAIL disposition):
+
+| Command | What it does |
+|---|---|
+| `python3 tests/unit_fail_actions.py` | The next-step and disposition rules (`services/fail_actions.py`, no database): retest first, bursts → check the station, repeated FAILs → RD, RD's own instruction wins, automatic states after a later PASS / FAIL, which changes are valid. |
+| `python3 tests/acceptance_phase5c.py [BASE]` | The Today page's numbers equal the Trend / Fail List endpoints for the same day (10/01 normal, 01/13 with FAILs), the banner, the day switch; the Fail List's counts and pending / handled views; dispositions (401, validation, 404 / 409 for PASS runs and FAILs closed by a retest, set → counted → history → back to open, no row left); the next step of the 15 units still failing; the Settings idle warning. Reads two record ids with `docker exec` (PSQL_CONTAINER). |
+| `python3 tests/e2e_phase5c.py [BASE] [OUT_DIR]` | Browser: Today at 1920×1080 without scrolling (no tests yet, 10/01, 01/13 in 中文, light theme), day switch, work-order chips; the TV address `?tv=1` rotating Today ↔ Trend; the Fail List's views, tiles, next steps and detail window signed out and as RD (set and put back); role landing; the detail page's FAIL table; the Settings field. About two minutes. |
+
+Phase 5F-2 (Advanced Analysis, RD):
+
+| Command | What it does |
+|---|---|
+| `python3 tests/acceptance_phase5f2.py [BASE]` | Access (401 / 403 / 200), every filter, Pareto and cross tables that add up, three real triage questions on the production copy, triage validation, one run confirmed with an instruction that reaches the Fail List and the work-order note, a batch reclassification that survives the FAIL scan, taxonomy add / rename / merge / delete, reset back to the rules, unit history, log viewer, similar cases, CSV and log export, Ask AI (aggregates only). Waits 70 s for one scan. |
+| `python3 tests/e2e_phase5f2.py [BASE] [OUT_DIR]` | Browser: who sees the window, filters, Pareto, cross table, batch triage, the detail window's RD section and its instruction on the Fail List and Work Orders, a unit's five tests with two logs side by side, similar cases, the taxonomy tab in English. Resets what it triaged. |
+
+All suites in one go: `tests/run_all.sh [--quick] [--compat <backup.dump>]` (environment: BASE, SAMPLE_ZIP, SHOTS, LOGS).

@@ -28,9 +28,18 @@ with sync_playwright() as p:
     browser = p.chromium.launch()
     ctx = browser.new_context(locale="en-US", viewport={"width": 1920, "height": 1080})
     page = ctx.new_page()
-    page.on("console", lambda m: problems.append(f"console.{m.type}: {m.text}") if m.type in ("error", "warning") else None)
+    # A failed resource load is reported by the response handler (the ask endpoint may be retried once).
+    page.on("console", lambda m: problems.append(f"console.{m.type}: {m.text}")
+            if m.type in ("error", "warning") and not m.text.startswith("Failed to load resource") else None)
     page.on("pageerror", lambda e: problems.append(f"pageerror: {e}"))
-    page.on("response", lambda r: problems.append(f"HTTP {r.status} {r.url}") if r.status >= 400 else None)
+    asks = []      # /api/wo-report/ask answers: the shared edge LLM may be busy (503 after 60 s); one retry is allowed
+
+    def on_response(r):
+        if "/api/wo-report/ask" in r.url:
+            asks.append(r.status)
+        elif r.status >= 400:
+            problems.append(f"HTTP {r.status} {r.url}")
+    page.on("response", on_response)
 
     def shot(name, full=False, wait=900):
         page.wait_for_timeout(wait)
@@ -44,7 +53,7 @@ with sync_playwright() as p:
     check("the PASS / FAIL split is the first tile, left of the yield",
           tiles.nth(0).get_attribute("class") == "ov-split" and tiles.nth(1).get_attribute("class") == "ov-hero")
     check("split legend shows PASS and FAIL counts", "PASS" in page.inner_text("#ovSplitLegend") and "FAIL" in page.inner_text("#ovSplitLegend"))
-    check("Hourly Output takes the split's old place (top right)", page.locator(".ov-charts .card").nth(1).locator("#chOvHourly").count() == 1)
+    check("Hourly Output takes the split's old place (top right)", page.locator("#page-overview .ov-charts .card").nth(1).locator("#chOvHourly").count() == 1)
     check("hourly note: day and 07:00–19:00 with the target", "07:00–19:00" in page.inner_text("#ovHourlyNote") and "target" in page.inner_text("#ovHourlyNote"),
           page.inner_text("#ovHourlyNote"))
     check("the Dashboard still fits 1920×1080 without scrolling", page.evaluate("document.documentElement.scrollHeight") <= 1080)
@@ -76,10 +85,17 @@ with sync_playwright() as p:
     check("the report says it is AI-written and number-checked", "checked" in page.inner_text("#wdReportMeta"))
     check("FAIL list of the work order: 7 units", page.locator("#wdFailRows tr").count() == 7)
     shot("42_detail_red_en", full=True)
-    page.click("#wdAskChips button >> nth=0")
-    page.wait_for_selector("#wdAskLog .msg.assistant:not(.typing)", timeout=90000)
+    for attempt in range(2):
+        before = len(asks)
+        page.click("#wdAskChips button >> nth=0")
+        page.wait_for_function(f"document.querySelectorAll('#wdAskLog .msg.assistant:not(.typing)').length > {attempt}", timeout=90000)
+        page.wait_for_timeout(300)
+        if asks[before:] == [200]:
+            break
+        print(f"  (ask attempt {attempt + 1}: HTTP {asks[before:]} — the shared LLM was busy; retrying)", flush=True)
+        page.wait_for_timeout(20000)
     answer = page.locator("#wdAskLog .msg.assistant").last.inner_text()
-    check("a suggested question gets an answer", len(answer) > 10, answer[:120])
+    check("a suggested question gets an answer (HTTP 200 from the LLM)", asks and asks[-1] == 200 and len(answer) > 10, (asks, answer[:120]))
     shot("43_detail_ask", full=True)
     page.click("#btnLang")
     page.wait_for_timeout(1200)

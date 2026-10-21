@@ -8,7 +8,7 @@ import { bucketLabels, esc, fmtDate, fmtDateTime, fmtInt, fmtNum, fmtPct, yieldL
 import { getLang, joinList, localized, t } from '../core/i18n.js';
 import { queryString } from '../core/scope.js';
 import { $, openFormModal, tableState, toast } from '../core/ui.js';
-import { categoryBadge, reasonText, runSeqHtml, stationText } from './fails.js';
+import { categoryBadge, dispositionHtml, openFailDetail, reasonText, runSeqHtml, stationText, suggestHtml } from './fails.js';
 import { renderBands } from './overview.js';
 import { flagText } from './workorders.js';
 
@@ -37,7 +37,8 @@ function renderHead(d) {
         hours: fmtNum(m.duration_h, 1), active: fmtInt(m.active_hours) }) : '';
     const note = s.note || {};
     $('#wdNote').innerHTML = (note.source === 'llm' ? `<span class="ai-tag" title="${esc(t('wo.aiTitle'))}">${esc(t('wo.ai'))}</span>` : '')
-        + esc(getLang() === 'zh' ? note.zh || '' : note.en || '');
+        + esc(getLang() === 'zh' ? note.zh || '' : note.en || '')
+        + (note.rd ? ` <span class="rd-action" title="${esc(`${note.rd.by || ''} ${fmtDateTime(note.rd.at)}`)}">${esc(t('wo.rdNote', { text: note.rd.text }))}</span>` : '');
     $('#btnWdPlan').hidden = !auth.isAdmin();
     document.title = `${s.work_order} · ${t('app.title')}`;
     $('#pageTitle').textContent = t('wd.title', { wo: s.work_order });
@@ -274,16 +275,19 @@ async function loadFails() {
     $('#wdFailsLink').hidden = true;
     try {
         const data = await apiGet(`/api/fail-list${queryString({ ...keyParams(), page_size: 50 })}`);
-        if (!data.items.length) { tableState(tbody, 10, 'empty', t('wd.noFails')); return; }
+        if (!data.items.length) { tableState(tbody, 11, 'empty', t('wd.noFails')); return; }
         tbody.innerHTML = data.items.map(r => `<tr>
-            <td class="nowrap">${esc(fmtDateTime(r.test_time))}</td><td><code>${esc(r.sn)}</code></td><td><code>${esc(r.wifi_mac || '—')}</code></td>
-            <td class="nowrap">${categoryBadge(r.analysis, r.fail_reason)}</td><td class="nowrap">${runSeqHtml(r.analysis)}</td>
+            <td class="nowrap">${esc(fmtDateTime(r.test_time))}</td>
+            <td><button class="link-btn mono" type="button" data-detail="${r.id}" title="${esc(t('fails.detailTitle'))}">${esc(r.sn)}</button></td>
+            <td><code>${esc(r.wifi_mac || '—')}</code></td>
+            <td class="nowrap">${categoryBadge(r.analysis, r.fail_reason)}</td><td class="fl-next-cell">${suggestHtml(r.suggest, r.analysis)}</td>
+            <td class="nowrap">${dispositionHtml(r.disposition)}</td><td class="nowrap">${runSeqHtml(r.analysis)}</td>
             <td class="nowrap small-text">${esc(stationText(r.analysis))}</td>
-            <td class="num">${fmtNum(r.avg_24g, 1)}</td><td class="num">${fmtNum(r.avg_5g, 1)}</td><td class="num">${fmtInt(r.sn_runs)}</td>
+            <td class="num">${fmtNum(r.avg_24g, 1)}</td><td class="num">${fmtNum(r.avg_5g, 1)}</td>
             <td><button class="btn small" type="button" data-log="${r.id}">${esc(t('fails.download'))}</button></td></tr>`).join('');
         if (data.total > data.items.length) { $('#wdFailsLink').hidden = false; $('#wdFailsLink').textContent = t('wd.failsAll', { n: fmtInt(data.total) }); }
     } catch (err) {
-        tableState(tbody, 10, 'error', t('common.loadFailedMsg', { error: err.message }), loadFails);
+        tableState(tbody, 11, 'error', t('common.loadFailedMsg', { error: err.message }), loadFails);
     }
 }
 
@@ -384,6 +388,8 @@ function init(app) {
         location.hash = 'fails';
     });
     $('#wdFailRows').addEventListener('click', async e => {
+        const detail = e.target.closest('[data-detail]');
+        if (detail) { openFailDetail(detail.dataset.detail, loadFails); return; }
         const btn = e.target.closest('[data-log]');
         if (!btn) return;
         try { await download(`/api/raw-log/${btn.dataset.log}`, `record_${btn.dataset.log}.txt`); } catch (err) { toast(err.message, 'bad'); }

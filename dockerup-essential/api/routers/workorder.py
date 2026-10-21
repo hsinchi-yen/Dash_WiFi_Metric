@@ -9,9 +9,6 @@ POST   /api/wo-report/generate (re)write the report now
 POST   /api/wo-report/ask      a follow-up question, answered from this work order's facts only
 GET    /api/wo-batches         web upload batches of the work order (signed in; uploaders see their own)
 """
-import collections
-import threading
-import time
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -20,26 +17,12 @@ import config
 import db
 from errors import ApiError, Msg, bad_request, not_found
 from schemas import AskBody, PlanBody, WorkOrderKey
-from services import auth, llm, wo_detail, wo_notes, wo_report, wo_status
+from services import auth, llm, ratelimit, wo_detail, wo_notes, wo_report, wo_status
 
 router = APIRouter(tags=["work order"])
 
 NOT_FOUND = Msg("找不到這張工單。", "Work order not found.")
-_hits: dict = collections.defaultdict(collections.deque)
-_hits_lock = threading.Lock()
-
-
-def _limit(request: Request, bucket: str, per_minute: int):
-    """Per-address rate limit (per API worker): the pages are open to everyone (Q18, Q25)."""
-    ip = auth.client_ip(request) or "?"
-    now = time.time()
-    with _hits_lock:
-        q = _hits[(bucket, ip)]
-        while q and now - q[0] > 60:
-            q.popleft()
-        if len(q) >= per_minute:
-            raise ApiError(429, Msg("太頻繁了，請稍候再試。", "Too many requests. Please wait a moment."), "rate_limited")
-        q.append(now)
+_limit = ratelimit.limit       # the pages are open to everyone (Q18, Q25): per-address limits on LLM calls
 
 
 def _key(work_order: str, product_model: Optional[str]):

@@ -6,8 +6,11 @@ so RD's changes are never overwritten. A record with several signals keeps the m
 category and the others as `secondary` (this replaces the draft's MULTI code).
 
 STAGES are the "presumed stage" RD confirms per record (Q14 + Q32): the rules never set it.
+RD edits the taxonomy in the advanced-analysis window: new codes, names / descriptions / actions, disable, and
+merge (every run of one code moves to another; the rules map the old code to the new one from then on).
 """
-from typing import Any
+import re
+from typing import Any, Optional
 
 import db
 
@@ -62,8 +65,59 @@ def seed(cur) -> int:
 
 
 def listing() -> list[dict[str, Any]]:
-    return db.rows("SELECT * FROM fail_taxonomy ORDER BY sort, code")
+    rows = db.rows("""SELECT x.*, (SELECT COUNT(*) FROM fail_analysis f WHERE f.category = x.code) AS runs
+                      FROM fail_taxonomy x ORDER BY x.sort, x.code""")
+    for r in rows:
+        r["runs"] = int(r["runs"])
+    return rows
 
 
 def names() -> dict[str, dict]:
-    return {r["code"]: r for r in listing()}
+    return {r["code"]: r for r in db.rows("SELECT * FROM fail_taxonomy")}
+
+
+# ─── RD maintains the taxonomy (5F-2): add, rename / edit, disable, merge ───
+
+CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]{2,31}$")
+TEXT_FIELDS = {"name_zh": 60, "name_en": 80, "description_zh": 300, "description_en": 400, "action_zh": 200, "action_en": 300}
+
+
+def check_fields(values: dict, creating: bool) -> Optional[str]:
+    """None when the fields are valid, else an error code (pure)."""
+    if creating:
+        if not CODE_RE.match(str(values.get("code") or "")):
+            return "bad_code"
+        if not (values.get("name_zh") or "").strip() or not (values.get("name_en") or "").strip():
+            return "name_required"
+    for k, limit in TEXT_FIELDS.items():
+        v = values.get(k)
+        if v is not None and (not isinstance(v, str) or len(v) > limit or (k.startswith("name_") and not v.strip())):
+            return f"bad_{k}"
+    if values.get("likely_stage") is not None and values["likely_stage"] not in STAGES:
+        return "bad_stage"
+    for k, lo, hi in (("severity", 1, 9), ("sort", 0, 999)):
+        v = values.get(k)
+        if v is not None and (isinstance(v, bool) or not isinstance(v, int) or not lo <= v <= hi):
+            return f"bad_{k}"
+    if values.get("enabled") is not None and not isinstance(values["enabled"], bool):
+        return "bad_enabled"
+    return None
+
+
+def merge(conn, code: str, into: str, user: str) -> int:
+    """Every run classified as `code` becomes `into` (RD's decision: kept by the rules), `code` is disabled and the
+    rules map it to `into` from now on. Returns the runs moved."""
+    n = db.execute(conn, """UPDATE fail_analysis SET category = %s, classifier = 'rd',
+                                   rd_status = CASE WHEN rd_status = 'new' THEN 'reclassified' ELSE rd_status END,
+                                   rd_by = %s, rd_at = NOW(), updated_at = NOW() WHERE category = %s""", (into, user, code))
+    db.execute(conn, "UPDATE fail_analysis SET secondary = array_replace(secondary, %s, %s) WHERE %s = ANY(secondary)", (code, into, code))
+    db.execute(conn, "UPDATE fail_analysis SET secondary = ARRAY(SELECT DISTINCT unnest(secondary)) WHERE %s = ANY(secondary)", (into,))
+    db.execute(conn, "UPDATE fail_analysis SET secondary = array_remove(secondary, category) WHERE category = ANY(secondary)")
+    db.execute(conn, """UPDATE fail_taxonomy SET enabled = FALSE, merged_into = %s, updated_by = %s, updated_at = NOW()
+                        WHERE code = %s""", (into, user, code))
+    db.execute(conn, "UPDATE fail_taxonomy SET merged_into = %s WHERE merged_into = %s", (into, code))   # chains point at the end
+    return n
+
+
+def merged_map() -> dict[str, str]:
+    return {r["code"]: r["merged_into"] for r in db.rows("SELECT code, merged_into FROM fail_taxonomy WHERE merged_into IS NOT NULL")}

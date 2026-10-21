@@ -6,8 +6,10 @@
 Changes one setting through the page and puts it back. Fails on console errors / warnings, page
 errors or unexpected HTTP ≥ 400.
 """
+import json
 import os
 import sys
+import urllib.request
 
 from playwright.sync_api import sync_playwright
 
@@ -67,7 +69,13 @@ with sync_playwright() as p:
     check("basic columns: 10 (compare, status, work order, product, tested / plan, yield, FAIL, note, last test, report)", len(heads) == 10, heads)
     note = page.locator("#woRows tr.light-bad .wo-note").first
     check("a red row's note names its problem", "94.87" in note.inner_text() or "row" in note.inner_text(), note.inner_text())
-    check("AI-worded notes (red / amber work orders only) carry the AI tag", page.locator("#woRows .ai-tag").count() == 7, page.locator("#woRows .ai-tag").count())
+    # The AI tag marks the notes the server reports as AI-written: only red / amber work orders get one, and a note whose
+    # facts just changed shows the rule sentence until it is rewritten (at most every 30 min, the LLM budget).
+    api = json.load(urllib.request.urlopen(f"{BASE}/api/wo-status", timeout=30))["items"]
+    llm_notes = [x for x in api if x["note"]["source"] == "llm"]
+    check("AI-worded notes carry the AI tag, all of them red / amber work orders",
+          page.locator("#woRows .ai-tag").count() == len(llm_notes) and len(llm_notes) >= 5
+          and all(x["light"] in ("bad", "warn") for x in llm_notes), (page.locator("#woRows .ai-tag").count(), len(llm_notes)))
     title = page.locator("#woRows tr.light-bad .wo-state").first.get_attribute("title")
     check("the status pill's tooltip lists the checks", title.startswith("Checks:"), title)
     shot("30_workorders_basic_en")

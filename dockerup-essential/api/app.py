@@ -28,7 +28,7 @@ from fastapi.responses import FileResponse  # noqa: E402
 import config  # noqa: E402
 import db  # noqa: E402
 import errors  # noqa: E402
-from routers import accounts, analytics, auth, failures, maintenance, products, reports, settings, system, tweak, upload, workorder  # noqa: E402
+from routers import accounts, analytics, auth, failures, maintenance, products, rd, reports, settings, system, tweak, upload, workorder  # noqa: E402
 from services import migrations, scheduler  # noqa: E402
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -78,7 +78,7 @@ async def timing(request: Request, call_next):
     return response
 
 
-for module in (system, analytics, reports, settings, workorder, failures, auth, accounts, products, upload, tweak, maintenance):
+for module in (system, analytics, reports, settings, workorder, failures, rd, auth, accounts, products, upload, tweak, maintenance):
     app.include_router(module.router)
 
 

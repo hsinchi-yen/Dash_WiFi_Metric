@@ -8,9 +8,10 @@ import { applyI18n, getLang, initLang, onLangChange, setLang, t } from './core/i
 import { presetRange, scopeKey, scopeParams } from './core/scope.js';
 import { $, $$, initEscapeClose, initFormModal, toast, closeFormModal } from './core/ui.js';
 import report from './report.js';
+import today from './pages/today.js';
 import overview from './pages/overview.js';
 import workorders from './pages/workorders.js';
-import fails from './pages/fails.js';
+import fails, { closeFailDetail } from './pages/fails.js';
 import rf from './pages/rf.js';
 import production from './pages/production.js';
 import dbtweak from './pages/dbtweak.js';
@@ -19,12 +20,15 @@ import products from './pages/products.js';
 import accounts from './pages/accounts.js';
 import settings from './pages/settings.js';
 import wodetail from './pages/wodetail.js';
+import rd from './pages/rd.js';
 
-const PAGES = [overview, workorders, fails, rf, production, logupload, products, dbtweak, accounts, settings, wodetail];
+const PAGES = [today, overview, workorders, fails, rf, production, logupload, products, dbtweak, accounts, settings, wodetail, rd];
 const byId = Object.fromEntries(PAGES.map(p => [p.id, p]));
-const IDLE_MS = 5 * 60 * 1000;
+// The line TV (Q1): Today ↔ Trend. A TV address with ?tv=1 rotates at once instead of after 5 idle minutes.
+const TV = new URLSearchParams(location.search).get('tv') === '1';
+const IDLE_MS = TV ? 0 : 5 * 60 * 1000;
 const ROTATE_MS = 30 * 1000;
-const ROTATION = ['overview', 'workorders'];
+const ROTATION = ['today', 'overview'];
 
 export const app = {
     page: null,
@@ -48,9 +52,17 @@ export const app = {
 };
 
 /* ─── Routing ─── */
+/** Where an address without a page goes: the TV and anyone signed out → Today; signed in, by role
+ *  (administrator → Trend, uploader → Log Upload, RD → Advanced Analysis). */
+function landingPage() {
+    const user = auth.currentUser();
+    if (!user || TV) return 'today';
+    return { admin: 'overview', uploader: 'logupload', rd: 'rd' }[user.role] || 'today';
+}
+
 function pageFromHash() {
     const id = location.hash.replace(/^#/, '').split('?')[0];
-    return byId[id] ? id : 'overview';
+    return byId[id] ? id : landingPage();
 }
 
 async function show(id) {
@@ -217,12 +229,15 @@ function initStatus() {
             btn.textContent = t('fresh.refresh');
         }
     });
-    // New data (scheduled view refresh, ingest): reload the visible page quietly.
+    // New data (scheduled view refresh, ingest): reload the visible page quietly. A live page (Today) also
+    // reloads every two minutes without new data: "last hour" and "idle" move with the clock.
+    let ticks = 0;
     setInterval(async () => {
-        if (await loadMeta()) {
-            await loadOptions();
-            if (app.page?.scoped && !busy()) loadPage();
-        }
+        ticks += 1;
+        const changed = await loadMeta();
+        if (changed) await loadOptions();
+        if (busy()) return;
+        if ((changed && (app.page?.scoped || app.page?.live)) || (app.page?.live && ticks % 2 === 0)) loadPage();
     }, 60 * 1000);
 }
 
@@ -289,6 +304,7 @@ function renderAuthBox(user) {
     }
     // Administrator-only pages stay reachable by address; the menu just does not advertise them.
     $$('.nav-item[data-admin-only]').forEach(a => { a.hidden = !auth.isAdmin(); });
+    $$('.nav-item[data-rd-only]').forEach(a => { a.hidden = !(auth.isAdmin() || auth.isRd()); });
 }
 
 function renderAuth(user, reason) {
@@ -297,7 +313,7 @@ function renderAuth(user, reason) {
     PAGES.forEach(p => p.onAuthChange?.(user, reason, app));
 }
 
-/* ─── Idle rotation: Dashboard ↔ Work Orders every 30 s after 5 min idle; filters untouched ─── */
+/* ─── Idle rotation: Today ↔ Trend every 30 s after 5 min idle (at once with ?tv=1); filters untouched ─── */
 const idle = { last: Date.now() };
 
 function busy() {
@@ -323,7 +339,7 @@ async function start() {
     initLang();
     applyI18n();
     initFormModal();
-    initEscapeClose([['formModal', closeFormModal], ['reportModal', () => report.close()]]);
+    initEscapeClose([['formModal', closeFormModal], ['failModal', closeFailDetail], ['reportModal', () => report.close()]]);
     charts.applyDefaults();
     initTheme();
     initLanguage();

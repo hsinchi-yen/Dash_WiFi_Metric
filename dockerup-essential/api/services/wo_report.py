@@ -237,7 +237,7 @@ def generate(key: tuple, use_llm: bool = True) -> dict:
         # a flagged work order must not end up with no anomaly listed
         if rule[lang]["anomalies"] and not report[lang]["anomalies"]:
             report[lang]["anomalies"] = rule[lang]["anomalies"]
-    return {**base, "report": report, "source": "llm", "model": config.LLM_MODEL,
+    return {**base, "report": report, "source": "llm", "model": llm.model_name(),
             "error": f"{len(rejected)} sentences dropped" if rejected else None,
             "rejected": rejected or None, "elapsed": elapsed}
 

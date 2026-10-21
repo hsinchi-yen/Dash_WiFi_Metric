@@ -114,6 +114,7 @@ class SettingsBody(BaseModel):
     work_start: Optional[StrictStr] = Field(None, max_length=5)
     work_end: Optional[StrictStr] = Field(None, max_length=5)
     active_minutes: Optional[StrictInt] = None
+    idle_warn_minutes: Optional[StrictInt] = None
     done_idle_hours: Optional[StrictInt] = None
     fail_streak: Optional[StrictInt] = None
     tp_drop_pct: Optional[StrictInt] = None
@@ -135,6 +136,14 @@ class PlanBody(WorkOrderKey):
 class AskTurn(BaseModel):
     q: str = Field("", max_length=300)
     a: str = Field("", max_length=800)
+
+
+class DispositionBody(BaseModel):
+    """5C: what the line did with one FAIL test run (statuses in services.fail_actions)."""
+    model_config = ConfigDict(extra="forbid")
+    record_id: StrictInt
+    status: StrictStr = Field(..., max_length=16)
+    note: Optional[StrictStr] = Field(None, max_length=400)
 
 
 class AskBody(WorkOrderKey):

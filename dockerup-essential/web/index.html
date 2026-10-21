@@ -33,6 +33,7 @@
     </div>
     <nav class="nav" data-i18n-aria="nav.aria">
         <div class="nav-label" data-i18n="nav.groupOverview"></div>
+        <a class="nav-item" href="#today" data-page="today"><span class="nav-icon">🏭</span><span data-i18n="nav.today"></span></a>
         <a class="nav-item" href="#overview" data-page="overview"><span class="nav-icon">📊</span><span data-i18n="nav.overview"></span></a>
         <a class="nav-item" href="#workorders" data-page="workorders"><span class="nav-icon">📋</span><span data-i18n="nav.workorders"></span></a>
         <a class="nav-item" href="#fails" data-page="fails"><span class="nav-icon">⚠️</span><span data-i18n="nav.fails"></span></a>
@@ -44,6 +45,7 @@
         <a class="nav-item" href="#products" data-page="products"><span class="nav-icon">🏷️</span><span data-i18n="nav.products"></span></a>
         <a class="nav-item" href="#dbtweak" data-page="dbtweak" title="DB Tweak"><span class="nav-icon">🔧</span><span data-i18n="nav.dbtweak"></span></a>
         <a class="nav-item" href="#accounts" data-page="accounts" data-admin-only><span class="nav-icon">👥</span><span data-i18n="nav.accounts"></span></a>
+        <a class="nav-item" href="#rd" data-page="rd" data-rd-only><span class="nav-icon">🔬</span><span data-i18n="nav.rd"></span></a>
         <a class="nav-item" href="#settings" data-page="settings" data-admin-only><span class="nav-icon">⚙️</span><span data-i18n="nav.settings"></span></a>
     </nav>
     <div class="sidebar-foot">
@@ -96,7 +98,41 @@
 
     <div class="content">
 
-    <!-- ─── Dashboard ─── -->
+    <!-- ─── Today (5C, the home page and half of the TV rotation) ─── -->
+    <section class="page" id="page-today" hidden>
+        <div class="card td-banner light-none" id="tdBanner">
+            <div class="td-banner-top">
+                <span class="td-dot"></span>
+                <span class="td-light" id="tdLight"></span>
+                <span class="td-reason" id="tdReason"></span>
+                <span class="spacer"></span>
+                <span class="td-date" id="tdDate"></span>
+                <span class="td-daynav">
+                    <button class="btn small ghost" type="button" id="btnTdPrev" data-i18n-aria="td.prevDay">◀</button>
+                    <button class="btn small ghost" type="button" id="btnTdToday" data-i18n="td.backToday" hidden></button>
+                    <button class="btn small ghost" type="button" id="btnTdNext" data-i18n-aria="td.nextDay">▶</button>
+                </span>
+            </div>
+            <div class="td-more" id="tdMore"></div>
+            <div class="td-wos" id="tdWos"></div>
+        </div>
+        <div class="td-numbers">
+            <div class="td-num" id="tdUnits"><div class="label" data-i18n="td.units"></div><div class="value">—</div><div class="sub"></div></div>
+            <div class="td-num" id="tdYield"><div class="label" data-i18n="td.yield"></div><div class="value">—</div><div class="sub"></div></div>
+            <div class="td-num" id="tdPending"><div class="label" data-i18n="td.pending"></div><div class="value">—</div><div class="sub"></div></div>
+            <div class="td-num" id="tdHour"><div class="label" data-i18n="td.hour"></div><div class="value">—</div><div class="sub"></div></div>
+            <div class="td-num" id="tdLast"><div class="label" data-i18n="td.last"></div><div class="value">—</div><div class="sub"></div></div>
+            <div class="td-num" id="tdTp"><div class="label" data-i18n="td.tp"></div><div class="value">—</div><div class="sub"></div></div>
+        </div>
+        <div class="ov-charts">
+            <div class="card"><div class="card-head"><div class="card-title" data-i18n="td.trend"></div><div class="card-note" id="tdTrendNote"></div></div><div class="chart-box"><canvas id="chTdTrend"></canvas></div></div>
+            <div class="card"><div class="card-head"><div class="card-title" data-i18n="td.hourly"></div><div class="card-note" id="tdHourlyNote"></div></div><div class="chart-box"><canvas id="chTdHourly"></canvas></div></div>
+            <div class="card"><div class="card-head"><div class="card-title" data-i18n="td.fails"></div><div class="card-note" id="tdFailNote"></div></div><div class="chart-box"><canvas id="chTdFails"></canvas></div></div>
+            <div class="card"><div class="card-head"><div class="card-title" data-i18n="ov.monthly"></div><div class="card-note" id="tdMonthlyNote"></div></div><div class="chart-box"><canvas id="chTdMonthly"></canvas></div></div>
+        </div>
+    </section>
+
+    <!-- ─── Trend (the former Dashboard) ─── -->
     <section class="page" id="page-overview" hidden>
         <div class="ov-numbers">
             <div class="ov-split">
@@ -157,8 +193,14 @@
 
     <!-- ─── Fail List ─── -->
     <section class="page" id="page-fails" hidden>
+        <div class="tiles" id="flTiles"></div>
         <div class="card">
             <div class="toolbar mb">
+                <div class="seg" role="group" id="flDispSeg" data-i18n-aria="fails.dispAria">
+                    <button type="button" data-disp="pending" data-i18n="fails.view.pending"></button>
+                    <button type="button" data-disp="handled" data-i18n="fails.view.handled"></button>
+                    <button type="button" data-disp="" data-i18n="fails.view.all"></button>
+                </div>
                 <input class="input" type="search" id="failSearch" data-i18n-placeholder="fails.searchPh" data-i18n-aria="common.search">
                 <span class="spacer"></span>
                 <span class="muted" id="failCount"></span>
@@ -167,10 +209,10 @@
                 <table>
                     <thead><tr>
                         <th data-i18n="fails.col.time"></th><th data-i18n="wo.col.wo"></th><th data-i18n="wo.col.product"></th>
-                        <th>SN</th><th data-i18n="fails.col.mac"></th><th data-i18n="fails.col.category"></th>
+                        <th>SN</th><th data-i18n="fails.col.category"></th>
+                        <th data-i18n="fails.col.next"></th><th data-i18n="fails.col.disp"></th>
                         <th data-i18n="fails.col.retest"></th><th data-i18n="fails.col.station"></th>
-                        <th class="num" data-i18n="fails.col.tp24"></th><th class="num" data-i18n="fails.col.tp5"></th>
-                        <th class="num" data-i18n="fails.col.rssi5"></th><th class="num" data-i18n="fails.col.runs"></th><th data-i18n="fails.col.log"></th>
+                        <th class="num" data-i18n="fails.col.tp24"></th><th class="num" data-i18n="fails.col.tp5"></th><th data-i18n="fails.col.log"></th>
                     </tr></thead>
                     <tbody id="failRows"></tbody>
                 </table>
@@ -615,9 +657,9 @@
                     <table>
                         <thead><tr>
                             <th data-i18n="fails.col.time"></th><th>SN</th><th data-i18n="fails.col.mac"></th><th data-i18n="fails.col.category"></th>
+                            <th data-i18n="fails.col.next"></th><th data-i18n="fails.col.disp"></th>
                             <th data-i18n="fails.col.retest"></th><th data-i18n="fails.col.station"></th>
-                            <th class="num" data-i18n="fails.col.tp24"></th><th class="num" data-i18n="fails.col.tp5"></th>
-                            <th class="num" data-i18n="fails.col.runs"></th><th data-i18n="fails.col.log"></th>
+                            <th class="num" data-i18n="fails.col.tp24"></th><th class="num" data-i18n="fails.col.tp5"></th><th data-i18n="fails.col.log"></th>
                         </tr></thead>
                         <tbody id="wdFailRows"></tbody>
                     </table>
@@ -634,6 +676,174 @@
                         </tr></thead>
                         <tbody id="wdBatchRows"></tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── Advanced Analysis (5F-2, RD and the administrator) ─── -->
+    <section class="page" id="page-rd" hidden>
+        <div class="card login-card" id="rdLogin" hidden>
+            <h3 data-i18n="auth.loginTitle"></h3>
+            <p data-i18n="rd.loginDesc"></p>
+            <div class="field"><label for="rdUser" data-i18n="common.username"></label><input class="input" id="rdUser" autocomplete="username"></div>
+            <div class="field"><label for="rdPass" data-i18n="common.password"></label><input class="input" type="password" id="rdPass" autocomplete="current-password"></div>
+            <button class="btn primary full" type="button" id="btnRdLogin" data-i18n="common.signIn"></button>
+            <div class="form-msg" id="rdLoginMsg" aria-live="polite"></div>
+        </div>
+        <div class="card" id="rdDenied" hidden><div class="state-msg" data-i18n="rd.denied"></div></div>
+        <div class="stack" id="rdPanel" hidden>
+            <div class="card rd-filters">
+                <div class="toolbar">
+                    <select class="select" id="rdF_category" data-i18n-aria="rd.f.category"></select>
+                    <select class="select" id="rdF_band" data-i18n-aria="rd.f.band"></select>
+                    <select class="select" id="rdF_ssid_group" data-i18n-aria="rd.f.ssid_group"></select>
+                    <select class="select" id="rdF_station_port" data-i18n-aria="rd.f.station_port"></select>
+                    <select class="select" id="rdF_retest" data-i18n-aria="rd.f.retest"></select>
+                    <select class="select" id="rdF_classifier" data-i18n-aria="rd.f.classifier"></select>
+                    <select class="select" id="rdF_rd_status" data-i18n-aria="rd.f.rd_status"></select>
+                    <select class="select" id="rdF_stage" data-i18n-aria="rd.f.stage"></select>
+                </div>
+                <div class="toolbar mt-s">
+                    <span class="muted small-text" data-i18n="rd.f.mbps"></span>
+                    <input class="input rd-num" id="rdF_mbps_min" inputmode="decimal" data-i18n-placeholder="rd.f.min" data-i18n-aria="rd.f.mbpsMin">
+                    <span class="muted">~</span>
+                    <input class="input rd-num" id="rdF_mbps_max" inputmode="decimal" data-i18n-placeholder="rd.f.max" data-i18n-aria="rd.f.mbpsMax">
+                    <span class="muted small-text" data-i18n="rd.f.rssi"></span>
+                    <input class="input rd-num" id="rdF_rssi_min" inputmode="decimal" data-i18n-placeholder="rd.f.min" data-i18n-aria="rd.f.rssiMin">
+                    <span class="muted">~</span>
+                    <input class="input rd-num" id="rdF_rssi_max" inputmode="decimal" data-i18n-placeholder="rd.f.max" data-i18n-aria="rd.f.rssiMax">
+                    <input class="input" type="search" id="rdSearch" data-i18n-placeholder="rd.searchPh" data-i18n-aria="common.search">
+                    <label class="rd-check"><input type="checkbox" id="rdStill"> <span data-i18n="rd.still"></span></label>
+                    <button class="btn small" type="button" id="btnRdReset" data-i18n="rd.reset"></button>
+                    <span class="spacer"></span>
+                    <span class="muted" id="rdCount"></span>
+                </div>
+            </div>
+            <div class="tabs" role="tablist">
+                <button class="tab" role="tab" type="button" data-rd-tab="overview" aria-selected="true" data-i18n="rd.tab.overview"></button>
+                <button class="tab" role="tab" type="button" data-rd-tab="list" aria-selected="false" data-i18n="rd.tab.list"></button>
+                <button class="tab" role="tab" type="button" data-rd-tab="unit" aria-selected="false" data-i18n="rd.tab.unit"></button>
+                <button class="tab" role="tab" type="button" data-rd-tab="taxonomy" aria-selected="false" data-i18n="rd.tab.taxonomy"></button>
+            </div>
+
+            <div data-rd-view="overview" class="stack">
+                <div class="grid cols-2">
+                    <div class="card">
+                        <div class="card-head">
+                            <div class="card-title" data-i18n="rd.pareto"></div>
+                            <div class="toolbar"><span class="card-note" id="rdGroupNote"></span>
+                                <select class="select" id="rdGroupBy" data-i18n-aria="rd.groupBy">
+                                    <option value="category" data-i18n="rd.dim.category"></option><option value="product" data-i18n="rd.dim.product"></option>
+                                    <option value="station" data-i18n="rd.dim.station"></option><option value="ssid_group" data-i18n="rd.dim.ssid_group"></option>
+                                    <option value="work_order" data-i18n="rd.dim.work_order"></option><option value="stage" data-i18n="rd.dim.stage"></option>
+                                    <option value="retest" data-i18n="rd.dim.retest"></option><option value="week" data-i18n="rd.dim.week"></option>
+                                    <option value="month" data-i18n="rd.dim.month"></option><option value="hour" data-i18n="rd.dim.hour"></option>
+                                    <option value="weekday" data-i18n="rd.dim.weekday"></option>
+                                </select></div>
+                        </div>
+                        <div class="chart-box tall"><canvas id="chRdPareto"></canvas></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-head">
+                            <div class="card-title" data-i18n="rd.cross"></div>
+                            <div class="toolbar">
+                                <select class="select" id="rdCrossRows" data-i18n-aria="rd.crossRows">
+                                    <option value="category" data-i18n="rd.dim.category"></option><option value="product" data-i18n="rd.dim.product"></option>
+                                    <option value="station" data-i18n="rd.dim.station"></option><option value="stage" data-i18n="rd.dim.stage"></option>
+                                </select>
+                                <span class="muted">×</span>
+                                <select class="select" id="rdCrossCols" data-i18n-aria="rd.crossCols">
+                                    <option value="station" data-i18n="rd.dim.station"></option><option value="product" data-i18n="rd.dim.product"></option>
+                                    <option value="ssid_group" data-i18n="rd.dim.ssid_group"></option><option value="hour" data-i18n="rd.dim.hour"></option>
+                                    <option value="weekday" data-i18n="rd.dim.weekday"></option><option value="month" data-i18n="rd.dim.month"></option>
+                                    <option value="retest" data-i18n="rd.dim.retest"></option><option value="stage" data-i18n="rd.dim.stage"></option>
+                                    <option value="category" data-i18n="rd.dim.category"></option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="rdCross"></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-head"><div class="card-title" data-i18n="rd.ask"></div><div class="card-note" data-i18n="rd.askNote"></div></div>
+                    <div class="chat-input bare">
+                        <input class="input" id="rdAskInput" maxlength="300" autocomplete="off" data-i18n-placeholder="rd.askPh">
+                        <button class="btn primary" type="button" id="btnRdAsk" data-i18n="rd.askBtn"></button>
+                    </div>
+                    <div class="mt-s" id="rdAskOut"></div>
+                </div>
+            </div>
+
+            <div data-rd-view="list" class="stack" hidden>
+                <div class="card">
+                    <div class="toolbar mb">
+                        <label class="muted small-text" for="rdSort" data-i18n="rd.sort"></label>
+                        <select class="select" id="rdSort">
+                            <option value="time" data-i18n="rd.sortTime"></option><option value="mbps" data-i18n="rd.sortMbps"></option>
+                            <option value="category" data-i18n="rd.sortCategory"></option><option value="station" data-i18n="rd.sortStation"></option>
+                        </select>
+                        <span class="spacer"></span>
+                        <button class="btn small" type="button" id="btnRdCsv" data-i18n="rd.csv"></button>
+                        <button class="btn small" type="button" id="btnRdLogs" data-i18n="rd.logsZip"></button>
+                    </div>
+                    <div class="rd-batch" id="rdBatch" hidden>
+                        <strong id="rdBatchCount"></strong>
+                        <select class="select" id="rdB_category" data-i18n-aria="rd.b.category"></select>
+                        <select class="select" id="rdB_stage" data-i18n-aria="rd.b.stage"></select>
+                        <select class="select" id="rdB_status" data-i18n-aria="rd.b.status"></select>
+                        <input class="input" id="rdB_owner" maxlength="64" data-i18n-placeholder="rd.b.owner" data-i18n-aria="rd.b.owner">
+                        <input class="input rd-wide" id="rdB_note" maxlength="500" data-i18n-placeholder="rd.b.note" data-i18n-aria="rd.b.note">
+                        <input class="input rd-wide" id="rdB_action" maxlength="200" data-i18n-placeholder="rd.b.action" data-i18n-aria="rd.b.action">
+                        <button class="btn primary" type="button" id="btnRdApply" data-i18n="rd.b.apply"></button>
+                        <button class="btn small ghost" type="button" id="btnRdClearSel" data-i18n="rd.b.clear"></button>
+                        <div class="form-msg" id="rdBatchMsg" aria-live="polite"></div>
+                    </div>
+                    <div class="table-wrap scroll">
+                        <table class="rd-table">
+                            <thead><tr>
+                                <th><input type="checkbox" class="wo-pick" id="rdPickAll" data-i18n-aria="rd.pickAll"></th>
+                                <th data-i18n="fails.col.time"></th><th data-i18n="wo.col.wo"></th><th data-i18n="wo.col.product"></th><th>SN</th>
+                                <th data-i18n="fails.col.category"></th><th class="num" data-i18n="rd.col.mbps"></th><th class="num">RSSI</th>
+                                <th data-i18n="fails.col.station"></th><th data-i18n="fails.col.retest"></th><th data-i18n="rd.col.status"></th>
+                                <th data-i18n="rd.col.rd"></th><th data-i18n="fails.col.log"></th>
+                            </tr></thead>
+                            <tbody id="rdRows"></tbody>
+                        </table>
+                    </div>
+                    <div class="pager" id="rdPager"></div>
+                </div>
+            </div>
+
+            <div data-rd-view="unit" class="stack" hidden>
+                <div class="card">
+                    <div class="toolbar mb">
+                        <input class="input" id="rdUnitSn" maxlength="64" autocomplete="off" spellcheck="false" data-i18n-placeholder="rd.unitPh" data-i18n-aria="rd.unitPh">
+                        <button class="btn primary" type="button" id="btnRdUnit" data-i18n="rd.unitBtn"></button>
+                        <span class="muted small-text" data-i18n="rd.unitHint"></span>
+                    </div>
+                    <div id="rdUnitRuns"></div>
+                    <div id="rdSimilar" class="mt"></div>
+                </div>
+                <div id="rdLogs"></div>
+            </div>
+
+            <div data-rd-view="taxonomy" class="stack" hidden>
+                <div class="card">
+                    <div class="toolbar mb">
+                        <div class="card-title" data-i18n="rd.taxTitle"></div>
+                        <span class="muted small-text" data-i18n="rd.taxNote"></span>
+                        <span class="spacer"></span>
+                        <button class="btn primary" type="button" id="btnRdTaxAdd" data-i18n="rd.tax.add"></button>
+                    </div>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th data-i18n="rd.tax.code"></th><th data-i18n="rd.tax.name"></th><th data-i18n="rd.tax.desc"></th><th data-i18n="rd.tax.action"></th>
+                                <th data-i18n="rd.tax.stage"></th><th class="num" data-i18n="rd.tax.severity"></th><th class="num" data-i18n="rd.runs"></th>
+                                <th data-i18n="rd.tax.state"></th><th></th></tr></thead>
+                            <tbody id="rdTaxRows"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -674,6 +884,8 @@
                         <div class="field"><label for="setDone" data-i18n="set.doneIdleHours"></label><input class="input" id="setDone" name="done_idle_hours" type="number" step="1" min="1" max="720" inputmode="numeric"></div>
                     </div>
                     <div class="field-hint" data-i18n="set.doneHint"></div>
+                    <div class="field mt-s"><label for="setIdleWarn" data-i18n="set.idleWarn"></label><input class="input" id="setIdleWarn" name="idle_warn_minutes" type="number" step="1" min="5" max="600" inputmode="numeric"></div>
+                    <div class="field-hint" data-i18n="set.idleWarnHint"></div>
                 </div>
                 <div class="card">
                     <div class="card-title mb" data-i18n="set.alerts"></div>
@@ -738,6 +950,19 @@
             <div class="rp-facts" id="rpFacts"></div>
             <div class="rp-text" id="rpBody"></div>
         </div>
+    </div>
+</div>
+
+<!-- ═══ FAIL detail (5C): evidence, next step, the unit's runs, disposition ═══ -->
+<div class="modal" id="failModal" role="dialog" aria-modal="true" aria-labelledby="fdTitle" hidden>
+    <div class="modal-panel wide">
+        <div class="modal-head">
+            <div class="modal-title" id="fdTitle"></div>
+            <span class="muted" id="fdSub"></span>
+            <button class="btn small" type="button" id="btnFdLog" data-i18n="fails.download"></button>
+            <button class="icon-btn" type="button" id="btnFdClose" data-i18n-aria="common.close">×</button>
+        </div>
+        <div class="modal-body" id="fdBody"></div>
     </div>
 </div>
 

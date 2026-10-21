@@ -69,7 +69,8 @@ function noteCell(st) {
     const title = [text, flags.length ? t('wo.flags', { list: joinList(flags) }) : '', note.pending ? t('wo.notePending') : '']
         .filter(Boolean).join('\n');
     const ai = note.source === 'llm' ? `<span class="ai-tag" title="${esc(t('wo.aiTitle'))}">${esc(t('wo.ai'))}</span>` : '';
-    return `<td class="wo-note" title="${esc(title)}">${ai}<span>${esc(text)}</span></td>`;
+    const rd = note.rd ? ` <span class="rd-action">${esc(t('wo.rdNote', { text: note.rd.text }))}</span>` : '';
+    return `<td class="wo-note" title="${esc(title + (note.rd ? `\n${t('wo.rdNote', { text: note.rd.text })}` : ''))}">${ai}<span>${esc(text)}${rd}</span></td>`;
 }
 
 function uphCell(r) {

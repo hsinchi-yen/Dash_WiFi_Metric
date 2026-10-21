@@ -38,7 +38,7 @@ ON CONFLICT (record_id) DO UPDATE SET
     evidence = EXCLUDED.evidence, station_port = EXCLUDED.station_port, ssid_group = EXCLUDED.ssid_group,
     target_ssid = EXCLUDED.target_ssid, classifier = EXCLUDED.classifier, classifier_version = EXCLUDED.classifier_version,
     confidence = EXCLUDED.confidence, updated_at = NOW()
-WHERE fail_analysis.classifier <> 'rd'
+WHERE fail_analysis.classifier <> 'rd' AND fail_analysis.rd_status = 'new'
 """
 
 
@@ -59,11 +59,16 @@ def scan(limit: int = 500) -> dict[str, int]:
                    t.band_result_24g, t.band_result_5g, t.bt_result
             FROM test_record t LEFT JOIN fail_analysis f ON f.record_id = t.id
             WHERE t.result = FALSE
-              AND (f.record_id IS NULL OR (f.classifier = 'rule' AND COALESCE(f.classifier_version, 0) < %s))
+              AND (f.record_id IS NULL OR (f.classifier = 'rule' AND f.rd_status = 'new' AND COALESCE(f.classifier_version, 0) < %s))
             ORDER BY t.id LIMIT %s
         """, (fail_rules.CLASSIFIER_VERSION, limit))
+        merged = {m["code"]: m["merged_into"]
+                  for m in db.fetch_all(conn, "SELECT code, merged_into FROM fail_taxonomy WHERE merged_into IS NOT NULL")}
         for r in todo:
             c = fail_rules.classify(r["raw_log"] or "", r)
+            if merged:      # RD merged a code into another: new runs follow that decision
+                c["category"] = merged.get(c["category"], c["category"])
+                c["secondary"] = [x for x in dict.fromkeys(merged.get(x, x) for x in c["secondary"]) if x != c["category"]]
             db.execute(conn, UPSERT, {
                 **c, "record_id": r["id"], "sn": r["sn"], "work_order": r["work_order"], "product_model": r["product_model"],
                 "test_time": r["test_time"], "secondary": c["secondary"],
@@ -96,6 +101,9 @@ def scan(limit: int = 500) -> dict[str, int]:
                     out["retest_updates"] += 1
         out["removed"] = db.execute(conn, """
             DELETE FROM fail_analysis f WHERE NOT EXISTS (SELECT 1 FROM test_record t WHERE t.id = f.record_id AND t.result = FALSE)
+        """)
+        db.execute(conn, """
+            DELETE FROM fail_disposition d WHERE NOT EXISTS (SELECT 1 FROM test_record t WHERE t.id = d.record_id AND t.result = FALSE)
         """)
     if out["classified"] or out["removed"]:
         log.info("fail scan: %(classified)d classified, %(retest_updates)d retest updates, %(removed)d removed", out)
@@ -157,7 +165,7 @@ def llm_once() -> bool:
         try:
             cur.execute("""
                 SELECT f.record_id, t.raw_log FROM fail_analysis f JOIN test_record t ON t.id = f.record_id
-                WHERE f.category = 'UNKNOWN' AND f.classifier = 'rule'
+                WHERE f.category = 'UNKNOWN' AND f.classifier = 'rule' AND f.rd_status = 'new'
                   AND (f.llm_tried_at IS NULL OR f.llm_tried_at < NOW() - make_interval(secs => %s))
                 ORDER BY f.record_id LIMIT 1
             """, (LLM_RETRY_SEC,))
@@ -176,8 +184,8 @@ def llm_once() -> bool:
                 cur.execute("""
                     UPDATE fail_analysis SET category = %s, evidence = %s, classifier = 'llm', confidence = %s, llm_model = %s,
                                              llm_tried_at = NOW(), updated_at = NOW()
-                    WHERE record_id = %s AND classifier = 'rule'
-                """, (r["code"], _json(r["evidence"]), r["confidence"], config.LLM_MODEL, row["record_id"]))
+                    WHERE record_id = %s AND classifier = 'rule' AND rd_status = 'new'
+                """, (r["code"], _json(r["evidence"]), r["confidence"], llm.model_name(), row["record_id"]))
             else:
                 cur.execute("UPDATE fail_analysis SET llm_tried_at = NOW() WHERE record_id = %s", (row["record_id"],))
             log.info("LLM classified %s as %s (%.2f)", row["record_id"], r["code"], r["confidence"])
@@ -233,8 +241,8 @@ def for_records(ids: list) -> dict[int, dict]:
         return {}
     rows = db.rows("""
         SELECT f.record_id, f.category, f.secondary, f.band, f.mbps, f.threshold, f.rssi, f.attempts, f.evidence,
-               f.station_port, f.ssid_group, f.target_ssid, f.retest_outcome, f.run_seq, f.classifier, f.confidence,
-               f.stage, f.rd_status, t.name_zh, t.name_en, t.action_zh, t.action_en
+               f.station_port, f.ssid_group, f.target_ssid, f.retest_outcome, f.run_seq, f.run_index, f.classifier, f.confidence,
+               f.stage, f.rd_status, f.rd_action, f.rd_note, f.rd_by, f.rd_at, t.name_zh, t.name_en, t.action_zh, t.action_en
         FROM fail_analysis f LEFT JOIN fail_taxonomy t ON t.code = f.category
         WHERE f.record_id = ANY(%s)
     """, (list(ids),))

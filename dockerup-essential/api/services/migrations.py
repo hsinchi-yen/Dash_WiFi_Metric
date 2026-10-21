@@ -14,6 +14,7 @@ desktop rows stay NULL). Everything else new lives in separate objects:
   wo_status_note    L1 one-line status note per work order (settings live in app_meta "settings")
   wo_report         L3 structured final report per work order
   fail_taxonomy / fail_analysis                          5F failure categories and one classification per FAIL run
+  fail_disposition  5C what the line did with a FAIL run (hand-set; a later PASS closes it automatically)
   llm_usage         one row per LLM completion (kept 90 days)
 
 Old-database compatibility (tests/db_compat.sh must print COMPATIBLE before a deployment):
@@ -297,6 +298,16 @@ TABLES = (
     "CREATE INDEX IF NOT EXISTS fail_analysis_wo_idx ON fail_analysis (work_order, product_model)",
     "CREATE INDEX IF NOT EXISTS fail_analysis_time_idx ON fail_analysis (test_time)",
     "CREATE INDEX IF NOT EXISTS fail_analysis_station_idx ON fail_analysis (ssid_group, station_port)",
+    # 5C: what the line did with a FAIL run (set by hand; a later PASS closes it without a row). No foreign
+    # key to test_record either; the FAIL scan removes rows whose test run is gone.
+    """CREATE TABLE IF NOT EXISTS fail_disposition (
+        record_id   BIGINT PRIMARY KEY,
+        sn          TEXT,
+        status      TEXT NOT NULL,
+        note        TEXT,
+        updated_by  TEXT,
+        updated_at  TIMESTAMPTZ DEFAULT NOW()
+    )""",
     # every LLM completion (purpose, success, duration): the call rate on the Settings page
     """CREATE TABLE IF NOT EXISTS llm_usage (
         id      BIGSERIAL PRIMARY KEY,
@@ -314,6 +325,8 @@ OWN_COLUMNS = (
     ("wo_plan", "admin_by", "TEXT"),
     ("wo_plan", "admin_at", "TIMESTAMPTZ"),
     ("app_users", "role", "TEXT NOT NULL DEFAULT 'uploader'"),   # uploader | rd (5F)
+    ("fail_analysis", "rd_action", "TEXT"),     # 5F-2: RD's instruction for the line (shown as the next step)
+    ("fail_taxonomy", "merged_into", "TEXT"),   # 5F-2: a merged code; the rules map it to this one
 )
 
 

@@ -87,12 +87,34 @@ def current_note(status: dict, stored: Optional[dict]) -> dict:
             "pending": config.WO_NOTE_AUTO and flagged(status)}
 
 
+def rd_conclusions(conn, keys) -> dict:
+    """RD's latest instruction for the line per work order (5F-2 write-back, Q37): shown after the one-line note,
+    as RD wrote it (no LLM)."""
+    if not keys:
+        return {}
+    rows = db.fetch_all(conn, """
+        SELECT DISTINCT ON (work_order, COALESCE(product_model, '')) work_order, COALESCE(product_model, '') AS product_model,
+               rd_action, rd_by, rd_at, COUNT(*) OVER (PARTITION BY work_order, COALESCE(product_model, '')) AS n
+        FROM fail_analysis
+        WHERE rd_action IS NOT NULL AND rd_action <> '' AND (work_order, COALESCE(product_model, '')) IN %s
+        ORDER BY work_order, COALESCE(product_model, ''), rd_at DESC NULLS LAST
+    """, (tuple(keys),))
+    return {(r["work_order"], r["product_model"]): {"text": r["rd_action"], "by": r["rd_by"], "n": int(r["n"]),
+            "at": r["rd_at"].isoformat() if r["rd_at"] else None} for r in rows}
+
+
 def notes_for(statuses: dict) -> dict:
-    """{key: note} for the given statuses (one query)."""
+    """{key: note} for the given statuses (two queries); `rd` = RD's latest instruction for the work order, if any."""
     keys = [_key(*k) for k in statuses]
     with db.db() as conn:
         stored = _stored(conn, keys)
-    return {k: current_note(st, stored.get(_key(*k))) for k, st in statuses.items()}
+        rd = rd_conclusions(conn, keys)
+    out = {}
+    for k, st in statuses.items():
+        note = current_note(st, stored.get(_key(*k)))
+        note["rd"] = rd.get(_key(*k))
+        out[k] = note
+    return out
 
 
 def _prompt(status: dict, facts: dict) -> list[dict]:
@@ -135,7 +157,7 @@ def generate(status: dict) -> dict:
         log.info("note %s rejected: %s", status["work_order"], "; ".join(problems))
         return {**fallback, "error": "rejected: " + "; ".join(problems), "elapsed": elapsed, "hash": digest,
                 "rejected": {"zh": zh, "en": en}}
-    return {"zh": zh, "en": en, "source": "llm", "model": config.LLM_MODEL, "error": None, "elapsed": elapsed, "hash": digest}
+    return {"zh": zh, "en": en, "source": "llm", "model": llm.model_name(), "error": None, "elapsed": elapsed, "hash": digest}
 
 
 def store(conn, status: dict, note: dict) -> None:

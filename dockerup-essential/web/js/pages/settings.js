@@ -6,8 +6,8 @@ import { esc, fmtInt, fmtNum, setThresholds } from '../core/format.js';
 import { t } from '../core/i18n.js';
 import { $, $$, toast } from '../core/ui.js';
 
-const NUMBER_FIELDS = ['yield_good', 'yield_warn', 'active_minutes', 'done_idle_hours', 'fail_streak', 'tp_drop_pct', 'behind_pct'];
-const INT_FIELDS = new Set(['active_minutes', 'done_idle_hours', 'fail_streak', 'tp_drop_pct', 'behind_pct']);
+const NUMBER_FIELDS = ['yield_good', 'yield_warn', 'active_minutes', 'done_idle_hours', 'idle_warn_minutes', 'fail_streak', 'tp_drop_pct', 'behind_pct'];
+const INT_FIELDS = new Set(['active_minutes', 'done_idle_hours', 'idle_warn_minutes', 'fail_streak', 'tp_drop_pct', 'behind_pct']);
 const TIME_FIELDS = ['work_start', 'work_end'];
 const st = { data: null };
 let appRef;

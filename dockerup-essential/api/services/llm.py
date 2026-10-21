@@ -27,6 +27,13 @@ def probe() -> bool:
         req = urllib.request.Request(f"{config.LLM_API_BASE}/models", headers=_headers())
         with urllib.request.urlopen(req, timeout=config.LLM_STATUS_TIMEOUT) as response:
             ok = response.status == 200
+            try:
+                served = (json.loads(response.read().decode("utf-8")).get("data") or [{}])[0].get("id")
+            except Exception:
+                served = None
+            if ok and served:
+                with _lock:
+                    _state["served_model"] = served
     except Exception as exc:  # network / HTTP errors all mean "not connected"
         ok = False
         _state["error"] = str(exc)[:200]
@@ -44,7 +51,7 @@ def status(max_age: float = config.LLM_STATUS_CACHE_SEC) -> dict:
     if time.time() - _state["checked_at"] >= max_age:
         probe()
     with _lock:
-        return {"connected": _state["connected"], "model": config.LLM_MODEL,
+        return {"connected": _state["connected"], "model": _state.get("served_model") or config.LLM_MODEL,
                 "status": "ok" if _state["connected"] else "error",
                 "checked_at": _state["checked_at"], "last_ok_at": _state["last_ok_at"]}
 
@@ -98,7 +105,16 @@ def chat(messages: list[dict], timeout: int = config.LLM_SUMMARY_TIMEOUT, max_to
         raise
     _ok()
     _log(purpose, True, t0)
+    if data.get("model"):
+        with _lock:
+            _state["served_model"] = data["model"]      # what the server actually ran (it ignores the requested name)
     return data["choices"][0]["message"]["content"]
+
+
+def model_name() -> str:
+    """The model the LLM server last reported (llama.cpp serves whatever it has loaded), else the configured name."""
+    with _lock:
+        return _state.get("served_model") or config.LLM_MODEL
 
 
 def complete_json(messages: list[dict], schema: dict, name: str = "result", timeout: Optional[int] = None, **params) -> dict:
