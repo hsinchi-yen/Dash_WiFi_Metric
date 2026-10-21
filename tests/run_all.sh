@@ -3,7 +3,7 @@
 #
 #   tests/run_all.sh [--quick] [--compat <backup.dump>]
 #
-#   --quick    skip the long ones (upload boundary tests, the TV rotation pass, the 5F-2 scan wait)
+#   --quick    skip the long ones (upload boundary tests, the TV rotation pass, the 5F-2 scan wait, the desktop path)
 #   --compat   also run tests/db_compat.sh on that production backup (≈ 5 min)
 #
 # Environment: BASE (default http://127.0.0.1:8000), SAMPLE_ZIP (the delivery zip the upload tests use,
@@ -42,9 +42,11 @@ run() {   # run <name> <command…>
 }
 in_image() {   # a test that needs psycopg2 and the API modules: run it inside the API image
     docker run --rm --network host -v "$PWD/dockerup-essential/api:/app:ro" -v "$PWD/tests:/tests:ro" \
-        -v "$PWD/dockerup-essential/log_parser.py:/app/log_parser.py:ro" \
-        -e DATABASE_URL=postgresql://qc:qcpass@127.0.0.1:5432/wifitest -w /app "$API_IMAGE" python3 "/tests/$1"
+        -v "$PWD/dockerup-essential/log_parser.py:/app/log_parser.py:ro" ${OLD_DIR:+-v "$OLD_DIR:/old:ro"} \
+        -e DATABASE_URL=postgresql://qc:qcpass@127.0.0.1:5432/wifitest -w /app "$API_IMAGE" python3 "/tests/$1" "${@:2}"
 }
+# The deployed old system (its log_parser.py writes for the desktop tool): the newest production snapshot.
+OLD_DIR=$(ls -d "$PWD"/_remote_snapshot/*/dockerup-essential 2>/dev/null | tail -1)
 
 curl -sf "$BASE/health" >/dev/null || { echo "API not reachable at $BASE"; exit 2; }
 
@@ -82,6 +84,8 @@ run e2e_5c             python3 tests/e2e_phase5c.py "$BASE" "$SHOTS/phase5c"
 [ $QUICK = 1 ] || run e2e_forecast python3 tests/e2e_forecast.py "$BASE" "$SHOTS/forecast"
 run e2e_5f2            python3 tests/e2e_phase5f2.py "$BASE" "$SHOTS/phase5f2"
 run e2e_5e             python3 tests/e2e_phase5e.py "$BASE" "$SHOTS/phase5e"
+# old upload ways (desktop tool, batch command) → analysed by the running stack; waits for its 5-min refresh
+[ $QUICK = 1 ] || [ -z "$OLD_DIR" ] || run desktop_path in_image acceptance_desktop_path.py "$BASE"
 run golden_after       python3 tests/golden.py check "$BASE"
 [ -n "$COMPAT" ] && run db_compat tests/db_compat.sh "$COMPAT"
 
