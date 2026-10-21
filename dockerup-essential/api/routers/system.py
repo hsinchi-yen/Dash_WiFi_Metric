@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 import config
 import db
 from errors import ApiError, Msg
-from services import llm, stats
+from services import llm, settings, stats
 
 router = APIRouter(tags=["system"])
 
@@ -39,7 +39,8 @@ def meta():
         "version": config.APP_VERSION,
         "stats_refreshed_at": stats.refreshed_at(),
         "stats_refresh_sec": config.STATS_REFRESH_SEC,
-        "thresholds": {"yield_good": config.YIELD_GOOD, "yield_warn": config.YIELD_WARN},
+        "thresholds": settings.thresholds(),
+        "settings_version": settings.version(),
         "llm": {k: v for k, v in llm.status().items() if k in ("connected", "model")},
     }
 

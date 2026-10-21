@@ -5,13 +5,20 @@ Extracted so it can be unit-tested without touching DB or network.
 mode="normal"   : full report with Markdown, ZH or EN
 mode="carousel" : concise plain-text English for terminal typewriter display
 """
-from typing import Any
+from typing import Any, Optional
+
+# The dashboard's thresholds (Settings page); the caller passes the current ones.
+DEFAULT_THRESHOLDS = (98.0, 95.0)
 
 
-def _alert_labels(yield_pct: float):
-    if yield_pct >= 99.2:
+def _pct(v: float) -> str:
+    return f"{v:g}"
+
+
+def _alert_labels(yield_pct: float, good: float, warn: float):
+    if yield_pct >= good:
         return "正常 (NORMAL)", "NORMAL"
-    if yield_pct >= 98.5:
+    if yield_pct >= warn:
         return "警告 (WARNING)", "WARNING"
     return "告警 (ALARM)", "ALARM"
 
@@ -22,10 +29,15 @@ def build_summary_messages(
     wo: str,
     lang: str,
     mode: str = "normal",
+    thresholds: Optional[tuple[float, float]] = None,
 ) -> list[dict]:
+    good, warn = thresholds or DEFAULT_THRESHOLDS
     yield_pct = float(stats["yield_pct"])
-    alert_zh, alert_en = _alert_labels(yield_pct)
-    alert_tag = "ok" if yield_pct >= 99.2 else "warn" if yield_pct >= 98.5 else "err"
+    alert_zh, alert_en = _alert_labels(yield_pct, good, warn)
+    alert_tag = "ok" if yield_pct >= good else "warn" if yield_pct >= warn else "err"
+    g, w, w_hi = _pct(good), _pct(warn), _pct(round(good - 0.01, 2))
+    th_en = f">={g}% Normal, {w}-{w_hi}% Warning, <{w}% Alarm"
+    th_zh = f"≥{g}% 正常，{w}~{w_hi}% 警告，<{w}% 告警"
 
     if mode == "carousel":
         # Structured report for terminal typewriter display.
@@ -53,7 +65,7 @@ def build_summary_messages(
                 f"Total Passed: <ok>{stats['passed']}</ok>\n"
                 f"Total Failed: <err>{stats['failed']}</err>\n"
                 f"Yield Rate: <num>{yield_pct}%</num>\n"
-                f"Alert Level: <{alert_tag}>{alert_en}</{alert_tag}> (Threshold: >=99.2% Normal, 98.5-99.19% Warning, <98.5% Alarm)\n\n"
+                f"Alert Level: <{alert_tag}>{alert_en}</{alert_tag}> (Threshold: {th_en})\n\n"
                 f"3. RF Performance Metrics\n"
                 f"Average 2.4G Throughput: <num>{stats['avg_24g']} Mbps</num>\n"
                 f"Average 5G Throughput: <num>{stats['avg_5g']} Mbps</num>\n\n"
@@ -88,7 +100,7 @@ def build_summary_messages(
                 f"通過數量: <ok>{stats['passed']}</ok>\n"
                 f"失敗數量: <err>{stats['failed']}</err>\n"
                 f"良率: <num>{yield_pct}%</num>\n"
-                f"告警等級: <{alert_tag}>{alert_zh}</{alert_tag}>（門檻：≥99.2% 正常，98.5~99.19% 警告，<98.5% 告警）\n\n"
+                f"告警等級: <{alert_tag}>{alert_zh}</{alert_tag}>（門檻：{th_zh}）\n\n"
                 f"3. 射頻效能指標\n"
                 f"2.4G 平均吞吐量: <num>{stats['avg_24g']} Mbps</num>\n"
                 f"5G 平均吞吐量: <num>{stats['avg_5g']} Mbps</num>\n\n"
@@ -121,7 +133,7 @@ def build_summary_messages(
             f"- Pass: {stats['passed']}\n"
             f"- Fail: {stats['failed']}\n"
             f"- Yield: {yield_pct}%\n"
-            f"- Alert level: {alert_en} (thresholds: >=99.2% Normal, 98.5%-99.19% Warning, <98.5% Alarm)\n"
+            f"- Alert level: {alert_en} (thresholds: {th_en})\n"
             f"- Avg 2.4G throughput: {stats['avg_24g']} Mbps\n"
             f"- Avg 5G throughput: {stats['avg_5g']} Mbps\n"
             f"- Main failure reasons: {fails_text}\n\n"
@@ -142,7 +154,7 @@ def build_summary_messages(
             f"- Pass: {stats['passed']}\n"
             f"- Fail: {stats['failed']}\n"
             f"- 良率: {yield_pct}%\n"
-            f"- 告警等級: {alert_zh}（門檻：≥99.2% 正常，98.5%~99.19% 警告，<98.5% 告警）\n"
+            f"- 告警等級: {alert_zh}（門檻：{th_zh}）\n"
             f"- 2.4G 平均吞吐量: {stats['avg_24g']} Mbps\n"
             f"- 5G 平均吞吐量: {stats['avg_5g']} Mbps\n"
             f"- 主要失敗原因: {fails_display}\n\n"

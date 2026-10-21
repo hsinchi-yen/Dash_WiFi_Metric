@@ -75,6 +75,12 @@ compat prodlike migrated
 
 step "4. new API on the upgraded copy vs the pre-refactor responses"
 run python3 "$ROOT/tests/golden.py" check http://127.0.0.1:18105
+run python3 -c "
+import json, urllib.request as u
+st = json.load(u.urlopen('http://127.0.0.1:18105/api/wo-status'))['items']
+se = json.load(u.urlopen('http://127.0.0.1:18105/api/settings'))
+assert st and all(x['note']['zh'] for x in st) and se['products'], 'empty'
+print(f'new endpoints: wo-status {len(st)} work orders, settings {len(se[\"products\"])} products')"
 docker rm -f wifi-compat-new >/dev/null
 
 step "5. old API on both copies"

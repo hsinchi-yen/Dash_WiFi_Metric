@@ -55,11 +55,18 @@ CORS_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("CORS_ALLOWED_ORIGINS"
 WEB_HTML = os.environ.get("WEB_HTML", os.path.join(APP_DIR, "wifi_dashboard.html"))
 
 # Shared quality thresholds — dashboard colours and the AI report use the same values.
+# These are the defaults; the administrator changes them on the Settings page (app_meta "settings").
 YIELD_GOOD = 98.0          # ≥ green
 YIELD_WARN = 95.0          # ≥ amber, below → red
+
+# test_time is the test station's local clock (log file names); "now" for work-order status uses it too.
+LOCAL_TZ = os.environ.get("LOCAL_TZ", "Asia/Taipei")
+WO_STATUS_CACHE_SEC = 60       # statuses are recomputed after a view refresh, a settings change, or this long
+WO_NOTE_AUTO = os.environ.get("WO_NOTE_AUTO", "true").lower() == "true"   # L1 one-line notes in the background
 
 # Postgres advisory lock keys (shared by both uvicorn workers)
 MIGRATION_LOCK_KEY = 7361001
 STATS_REFRESH_LOCK_KEY = 7361002
 REPORT_WORKER_LOCK_KEY = 7361003   # one report generation at a time across workers
 UPLOAD_LOCK_KEY = 7361004          # one web upload commit at a time
+SETTINGS_LOCK_KEY = 7361005        # one settings save at a time (read-compare-write)

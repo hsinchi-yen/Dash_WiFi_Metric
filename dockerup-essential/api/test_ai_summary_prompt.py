@@ -90,12 +90,13 @@ def test_en_prompt_has_english_only_at_start_and_end():
 
 # ── Alert level logic ──────────────────────────────────────────────────────
 
+# The dashboard's thresholds (98 / 95 by default, Settings page) — one standard for colours and reports.
 @pytest.mark.parametrize("yield_pct,expected_en,expected_zh", [
     (100.0,  "NORMAL",  "正常"),
-    (99.2,   "NORMAL",  "正常"),
-    (99.19,  "WARNING", "警告"),
-    (98.5,   "WARNING", "警告"),
-    (98.49,  "ALARM",   "告警"),
+    (98.0,   "NORMAL",  "正常"),
+    (97.99,  "WARNING", "警告"),
+    (95.0,   "WARNING", "警告"),
+    (94.99,  "ALARM",   "告警"),
     (0.0,    "ALARM",   "告警"),
 ])
 def test_alert_level_thresholds(yield_pct, expected_en, expected_zh):
@@ -106,6 +107,14 @@ def test_alert_level_thresholds(yield_pct, expected_en, expected_zh):
         f"EN prompt for yield {yield_pct}% must contain alert level '{expected_en}'"
     assert expected_zh in msg_zh, \
         f"ZH prompt for yield {yield_pct}% must contain alert level '{expected_zh}'"
+    assert ">=98% Normal, 95-97.99% Warning, <95% Alarm" in msg_en
+    assert "≥98% 正常，95~97.99% 警告，<95% 告警" in msg_zh
+
+
+def test_alert_level_follows_given_thresholds():
+    stats = {**SAMPLE_STATS, "yield_pct": 99.0}
+    msg = build_summary_messages(stats, "", WO, "en", thresholds=(99.2, 98.5))[1]["content"]
+    assert "WARNING" in msg and ">=99.2% Normal, 98.5-99.19% Warning, <98.5% Alarm" in msg
 
 
 # ── Carousel mode ──────────────────────────────────────────────────────────
@@ -152,7 +161,7 @@ def test_carousel_prompt_has_required_section_headers():
 
 
 def test_carousel_alert_level_in_prompt():
-    for yield_pct, expected in [(100.0, "NORMAL"), (99.0, "WARNING"), (98.0, "ALARM")]:
+    for yield_pct, expected in [(100.0, "NORMAL"), (97.0, "WARNING"), (94.0, "ALARM")]:   # 98 / 95
         stats = {**SAMPLE_STATS, "yield_pct": yield_pct}
         prompt = build_summary_messages(stats, SAMPLE_FAILS, WO, "en", mode="carousel")[1]["content"]
         assert expected in prompt, \
@@ -160,7 +169,7 @@ def test_carousel_alert_level_in_prompt():
 
 
 def test_carousel_mode_supports_lang_zh():
-    """carousel mode now supports Chinese content while keeping English section headers."""
+    """carousel zh is entirely Traditional Chinese, section headers included (commit 4ccb1f3: no mixed language)."""
     messages_en = build_summary_messages(SAMPLE_STATS, SAMPLE_FAILS, WO, "en", mode="carousel")
     messages_zh = build_summary_messages(SAMPLE_STATS, SAMPLE_FAILS, WO, "zh", mode="carousel")
     
@@ -173,7 +182,8 @@ def test_carousel_mode_supports_lang_zh():
         "carousel zh system message must request Traditional Chinese"
     
     prompt_zh = messages_zh[1]["content"]
-    assert "WiFi Test Summary Report" in prompt_zh and "1. General Information" in prompt_zh, \
-        "carousel zh prompt must keep English section headers"
+    assert "WiFi 測試品質報告" in prompt_zh and "1. 基本資訊" in prompt_zh, \
+        "carousel zh prompt uses the Chinese section headers"
+    assert "WiFi Test Summary Report" not in prompt_zh, "carousel zh prompt must not mix in the English headers"
     assert "繁體中文" in prompt_zh or "traditional chinese" in prompt_zh.lower(), \
         "carousel zh prompt must request Chinese for analysis"

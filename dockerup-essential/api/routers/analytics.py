@@ -15,7 +15,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import Response
 
 from errors import not_found, Msg
-from services import analytics, stats
+from services import analytics, stats, wo_notes, wo_status
 
 router = APIRouter(tags=["analytics"])
 
@@ -129,7 +129,16 @@ def overview(date_from: Optional[str] = IsoDate, date_to: Optional[str] = IsoDat
 @router.get("/api/work-order-summary")
 def work_order_summary(date_from: Optional[str] = IsoDate, date_to: Optional[str] = IsoDate,
                        work_order: Optional[str] = None, product_model: Optional[str] = None) -> list[dict[str, Any]]:
-    return analytics.work_order_summary(date_from, date_to, _opt(work_order), _opt(product_model))
+    """One row per work order in the range. `status` (state, light, flags, plan, hourly rate, the one-line
+    note) describes the whole work order, not just the part inside the range."""
+    rows = analytics.work_order_summary(date_from, date_to, _opt(work_order), _opt(product_model))
+    statuses = wo_status.statuses()
+    picked = {(r["work_order"], r["product_model"]): statuses.get((r["work_order"], r["product_model"])) for r in rows}
+    notes = wo_notes.notes_for({k: v for k, v in picked.items() if v})
+    for r in rows:
+        key = (r["work_order"], r["product_model"])
+        r["status"] = {**picked[key], "note": notes.get(key)} if picked[key] else None
+    return rows
 
 
 @router.get("/api/fail-list")

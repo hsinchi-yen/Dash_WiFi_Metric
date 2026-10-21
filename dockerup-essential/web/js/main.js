@@ -17,8 +17,9 @@ import dbtweak from './pages/dbtweak.js';
 import logupload from './pages/logupload.js';
 import products from './pages/products.js';
 import accounts from './pages/accounts.js';
+import settings from './pages/settings.js';
 
-const PAGES = [overview, workorders, fails, rf, production, logupload, products, dbtweak, accounts];
+const PAGES = [overview, workorders, fails, rf, production, logupload, products, dbtweak, accounts, settings];
 const byId = Object.fromEntries(PAGES.map(p => [p.id, p]));
 const IDLE_MS = 5 * 60 * 1000;
 const ROTATE_MS = 30 * 1000;
@@ -153,7 +154,9 @@ async function loadOptions() {
 async function loadMeta() {
     try {
         const meta = await apiGet('/api/meta');
-        const changed = app.meta && app.meta.stats_refreshed_at !== meta.stats_refreshed_at;
+        // New data, or settings changed elsewhere (thresholds, status rules): the visible page reloads.
+        const changed = app.meta && (app.meta.stats_refreshed_at !== meta.stats_refreshed_at
+            || app.meta.settings_version !== meta.settings_version);
         app.meta = meta;
         setThresholds(meta.thresholds);
         renderFreshness();
@@ -243,7 +246,7 @@ function initClock() {
     setInterval(tickClock, 10 * 1000);
 }
 
-/* ─── Language: English (default) / 中文; switching keeps the page, filters and sign-in ─── */
+/* ─── Language: English / 中文 (default: ?lang=, then the saved choice, then the browser); switching keeps the page, filters and sign-in ─── */
 function initLanguage() {
     $('#btnLang').addEventListener('click', () => setLang(getLang() === 'en' ? 'zh' : 'en'));
     onLangChange(() => {

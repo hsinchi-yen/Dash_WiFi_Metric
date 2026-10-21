@@ -8,7 +8,7 @@ import json, sys, time
 from playwright.sync_api import sync_playwright
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
 OUT = sys.argv[2] if len(sys.argv) > 2 else "docs-screenshots"
-PAGES = ["overview", "workorders", "fails", "rf", "production", "logupload", "products", "dbtweak", "accounts"]
+PAGES = ["overview", "workorders", "fails", "rf", "production", "logupload", "products", "dbtweak", "accounts", "settings"]
 problems = []
 with sync_playwright() as p:
     browser = p.chromium.launch()

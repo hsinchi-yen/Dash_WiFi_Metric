@@ -1,14 +1,15 @@
 """Background loops, started once per uvicorn worker (advisory locks keep the work single).
 
 maintenance (every 15 s): refresh mv_unit when STATS_REFRESH_SEC has passed.
-reports     (every 5 s):  generate one queued AI report; once a minute, queue a missing or
-                          stale report for one of the newest work orders (REPORT_AUTO).
+reports     (every 5 s):  write one due work-order note (L1), else generate one queued AI report;
+                          once a minute, queue a missing or stale report for one of the newest work
+                          orders (REPORT_AUTO).
 """
 import logging
 import threading
 
 import config
-from services import reports, stats
+from services import reports, stats, wo_notes
 
 log = logging.getLogger("wifi.scheduler")
 
@@ -29,6 +30,8 @@ def _report_worker():
     while not _stop.wait(5):
         ticks += 1
         try:
+            if wo_notes.process_once():        # one-line notes first: short, and the Work Orders page shows them
+                continue
             if reports.process_queue_once():
                 continue
             if config.REPORT_AUTO and ticks % 12 == 0:

@@ -20,3 +20,11 @@ History: the 2026-10-20 backend refactor (routers/services, `mv_unit`) was verif
 | `python3 tests/db_compat.py db OLD_DSN NEW_DSN [--mode migrated\|rollback] …` / `oldapi OLD_URL NEW_URL …` | The checks `db_compat.sh` runs (`db` needs psycopg2: run it inside the API image). |
 
 `GOLDEN_DIR=<dir>` makes `golden.py` record / compare somewhere else (used to compare two old-API runs).
+
+Phase 5A (settings, work-order status, one-line AI notes):
+
+| Command | What it does |
+|---|---|
+| `python3 tests/unit_wo_rules.py` | The status rules (`services/wo_rules.py`, no database): states, lights, every check, note hash, rule sentences, the number check on AI sentences. |
+| `python3 tests/acceptance_phase5a.py [BASE]` | Settings API (read, 401 / 403, eleven invalid inputs, change → status / thresholds / hourly targets follow, restore, audit), the statuses of all 77 work orders on the production copy, and every stored AI note against the number rule. Restores the settings it changes. |
+| `python3 tests/e2e_phase5a.py [BASE] [OUT_DIR]` | Browser: language default (browser language, `?lang=`), Work Orders status / note / column switch, Settings sign-in / denied / form / invalid input / save and restore. |

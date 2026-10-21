@@ -11,6 +11,7 @@ desktop rows stay NULL). Everything else new lives in separate objects:
   product_registry  the product names the dashboard accepts
   wo_plan           planned test quantity per work order
   upload_log / upload_log_item                           web uploads and their per-file results
+  wo_status_note    L1 one-line status note per work order (settings live in app_meta "settings")
 
 Old-database compatibility (tests/db_compat.sh must print COMPATIBLE before a deployment):
   - never alter, drop or constrain test_record or the old views v_yield_by_wo / v_unstable_units /
@@ -200,6 +201,24 @@ TABLES = (
         message     TEXT,
         record_id   INT,
         PRIMARY KEY (upload_id, idx)
+    )""",
+    # L1: the one-line status note per work order (latest only; rewritten when its facts change)
+    """CREATE TABLE IF NOT EXISTS wo_status_note (
+        work_order    TEXT NOT NULL,
+        product_model TEXT NOT NULL DEFAULT '',
+        facts_hash    TEXT NOT NULL,
+        state         TEXT,
+        light         TEXT,
+        facts         JSONB,
+        text_zh       TEXT,
+        text_en       TEXT,
+        source        TEXT,
+        model         TEXT,
+        error         TEXT,
+        rejected      JSONB,
+        elapsed_sec   REAL,
+        created_at    TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (work_order, product_model)
     )""",
 )
 

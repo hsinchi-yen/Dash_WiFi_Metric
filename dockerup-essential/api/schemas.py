@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, StrictInt, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr
 
 
 # ─── Auth & accounts ─────────────────────────────────────────────────────────
@@ -94,3 +94,23 @@ class ChatBody(BaseModel):
     messages: list = Field(default_factory=list)
     known: Optional[dict] = None
     lang: str = Field("zh", max_length=8)      # UI language for the reply
+
+
+# ─── Settings (administrator) ────────────────────────────────────────────────
+
+Number = Optional[StrictInt | StrictFloat]
+
+
+class SettingsBody(BaseModel):
+    """A partial update: only the fields sent change. Ranges are checked in services.settings."""
+    model_config = ConfigDict(extra="forbid")
+    yield_good: Number = None
+    yield_warn: Number = None
+    work_start: Optional[StrictStr] = Field(None, max_length=5)
+    work_end: Optional[StrictStr] = Field(None, max_length=5)
+    active_minutes: Optional[StrictInt] = None
+    done_idle_hours: Optional[StrictInt] = None
+    fail_streak: Optional[StrictInt] = None
+    tp_drop_pct: Optional[StrictInt] = None
+    behind_pct: Optional[StrictInt] = None
+    uph_targets: Optional[dict[str, Number]] = Field(None, description="product → units per hour; null clears the override")

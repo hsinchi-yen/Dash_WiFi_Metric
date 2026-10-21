@@ -12,7 +12,7 @@ from fastapi import APIRouter, Query
 import config
 from ai_summary_helper import build_summary_messages
 from errors import ApiError, Msg, not_found
-from services import llm, reports, stats
+from services import llm, reports, settings, stats
 
 log = logging.getLogger("wifi.reports")
 router = APIRouter(tags=["reports"])
@@ -52,7 +52,8 @@ def ai_summary(wo: str, product_model: Optional[str] = None, lang: str = "zh", m
         fails_text = ", ".join(f"{r['fail_reason']}({r['count']} units)" for r in fail_rows)
     else:
         fails_text = "No specific failures (all passed)" if lang == "en" else "無特定異常(或全數Pass)"
-    messages = build_summary_messages(facts, fails_text, wo, lang, mode)
+    th = settings.thresholds()
+    messages = build_summary_messages(facts, fails_text, wo, lang, mode, thresholds=(th["yield_good"], th["yield_warn"]))
     try:
         return {"summary": llm.chat(messages, max_tokens=config.LLM_REPORT_MAX_TOKENS)}
     except Exception as exc:

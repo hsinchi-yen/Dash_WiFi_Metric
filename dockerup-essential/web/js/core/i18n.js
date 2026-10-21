@@ -1,4 +1,4 @@
-// UI language: English (default) or 繁體中文. Every user-visible string lives in
+// UI language: English or 繁體中文 (default follows the browser; ?lang= wins). Every user-visible string lives in
 // strings.en.js / strings.zh.js (same keys; a unit test checks them).
 //   t('key', {name: value})  in JS;  data-i18n="key" (text), data-i18n-placeholder,
 //   data-i18n-title, data-i18n-aria  in HTML (applyI18n() re-applies them on a switch).
@@ -16,18 +16,21 @@ const listeners = new Set();
 
 export function getLang() { return lang; }
 
-/** ?lang=en|zh in the address wins (fixed line screens), then this browser's last choice, then English. */
-export function initialLang(search = '', stored = null) {
+/** ?lang=en|zh in the address wins (the line TV's fixed address, Q6), then this browser's last choice,
+ *  then the browser's own language (Chinese → 中文), else English. */
+export function initialLang(search = '', stored = null, browserLangs = []) {
     const fromUrl = new URLSearchParams(search).get('lang');
     if (LANGS.includes(fromUrl)) return fromUrl;
-    return LANGS.includes(stored) ? stored : 'en';
+    if (LANGS.includes(stored)) return stored;
+    return String(browserLangs[0] || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
 }
 
-/** This browser's choice (address, then saved, then English). */
+/** This browser's choice (address, then saved, then the browser language). */
 export function preferredLang() {
     let stored = null;
     try { stored = localStorage.getItem(STORAGE_KEY); } catch { /* storage blocked */ }
-    return initialLang(location.search, stored);
+    const browser = typeof navigator !== 'undefined' ? (navigator.languages?.length ? navigator.languages : [navigator.language]) : [];
+    return initialLang(location.search, stored, browser);
 }
 
 export function initLang() {

@@ -19,7 +19,7 @@ from typing import Any, Optional
 import config
 import db
 from ai_summary_helper import build_summary_messages
-from services import llm, stats
+from services import llm, settings, stats
 from services.filters import UNIT
 
 log = logging.getLogger("wifi.reports")
@@ -136,7 +136,9 @@ def _generate(cur, row) -> None:
         fails_text = ", ".join(f"{r['fail_reason']}({r['count']} units)" for r in fail_rows)
     else:
         fails_text = "No specific failures (all passed)" if lang == "en" else "無特定異常(或全數Pass)"
-    messages = build_summary_messages(stats_row, fails_text, work_order, lang, "normal")
+    th = settings.thresholds()
+    messages = build_summary_messages(stats_row, fails_text, work_order, lang, "normal",
+                                      thresholds=(th["yield_good"], th["yield_warn"]))
     t0 = time.perf_counter()
     try:
         text = llm.chat(messages, timeout=config.LLM_SUMMARY_TIMEOUT, max_tokens=config.LLM_REPORT_MAX_TOKENS).strip()

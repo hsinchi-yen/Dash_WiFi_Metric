@@ -44,6 +44,7 @@
         <a class="nav-item" href="#products" data-page="products"><span class="nav-icon">🏷️</span><span data-i18n="nav.products"></span></a>
         <a class="nav-item" href="#dbtweak" data-page="dbtweak" title="DB Tweak"><span class="nav-icon">🔧</span><span data-i18n="nav.dbtweak"></span></a>
         <a class="nav-item" href="#accounts" data-page="accounts" data-admin-only><span class="nav-icon">👥</span><span data-i18n="nav.accounts"></span></a>
+        <a class="nav-item" href="#settings" data-page="settings" data-admin-only><span class="nav-icon">⚙️</span><span data-i18n="nav.settings"></span></a>
     </nav>
     <div class="sidebar-foot">
         <div class="auth-box" id="authBox" hidden>
@@ -129,22 +130,20 @@
         <div class="card">
             <div class="toolbar mb">
                 <input class="input" type="search" id="woSearch" data-i18n-placeholder="wo.searchPh" data-i18n-aria="common.search">
+                <div class="seg" role="group" id="woColsSeg" data-i18n-aria="wo.colsAria">
+                    <button type="button" data-cols="basic" data-i18n="wo.cols.basic"></button>
+                    <button type="button" data-cols="all" data-i18n="wo.cols.all"></button>
+                </div>
                 <span class="spacer"></span>
                 <span class="muted" id="woCount"></span>
             </div>
             <div class="table-wrap scroll">
-                <table>
-                    <thead><tr>
-                        <th data-i18n="wo.col.wo"></th><th data-i18n="wo.col.product"></th><th data-i18n="wo.col.last"></th>
-                        <th class="num" data-i18n="wo.col.units"></th><th class="num">PASS</th><th class="num">FAIL</th>
-                        <th class="num" data-i18n="wo.col.yield"></th><th class="num" data-i18n="wo.col.retry"></th>
-                        <th class="num" data-i18n="wo.col.avg24"></th><th class="num" data-i18n="wo.col.avg5"></th>
-                        <th class="num" data-i18n="wo.col.duration"></th><th class="num" data-i18n="wo.col.uph"></th>
-                        <th data-i18n="wo.col.report"></th>
-                    </tr></thead>
+                <table class="wo-table">
+                    <thead id="woHead"></thead>
                     <tbody id="woRows"></tbody>
                 </table>
             </div>
+            <p class="muted small-text mt-s" data-i18n="wo.statusNote"></p>
         </div>
     </section>
 
@@ -509,6 +508,70 @@
                 <div class="pager" id="acctLoginPager"></div>
             </div>
         </div>
+    </section>
+
+    <!-- ─── Settings (administrator) ─── -->
+    <section class="page" id="page-settings" hidden>
+        <div class="card login-card" id="setLogin" hidden>
+            <h3 data-i18n="auth.loginTitle"></h3>
+            <p data-i18n="auth.loginDesc"></p>
+            <div class="field"><label for="setUser" data-i18n="common.username"></label><input class="input" id="setUser" autocomplete="username"></div>
+            <div class="field"><label for="setPass" data-i18n="common.password"></label><input class="input" type="password" id="setPass" autocomplete="current-password"></div>
+            <button class="btn primary full" type="button" id="btnSetLogin" data-i18n="common.signIn"></button>
+            <div class="form-msg" id="setLoginMsg" aria-live="polite"></div>
+        </div>
+        <div class="card" id="setDenied" hidden><div class="state-msg" data-i18n="set.denied"></div></div>
+        <form class="stack" id="setPanel" novalidate hidden>
+            <div class="notice" data-i18n="set.intro"></div>
+            <div class="set-grid">
+                <div class="card">
+                    <div class="card-title mb" data-i18n="set.yield"></div>
+                    <div class="set-fields">
+                        <div class="field"><label for="setYieldGood" data-i18n="set.yieldGood"></label><input class="input" id="setYieldGood" name="yield_good" type="number" step="0.1" min="0" max="100" inputmode="decimal"></div>
+                        <div class="field"><label for="setYieldWarn" data-i18n="set.yieldWarn"></label><input class="input" id="setYieldWarn" name="yield_warn" type="number" step="0.1" min="0" max="100" inputmode="decimal"></div>
+                    </div>
+                    <div class="field-hint" data-i18n="set.yieldHint"></div>
+                    <div class="set-preview"><span class="muted small-text" data-i18n="set.yieldPreview"></span><span id="setPreview"></span></div>
+                </div>
+                <div class="card">
+                    <div class="card-title mb" data-i18n="set.status"></div>
+                    <div class="set-fields">
+                        <div class="field"><label for="setWorkStart" data-i18n="set.workStart"></label><input class="input" id="setWorkStart" name="work_start" type="time"></div>
+                        <div class="field"><label for="setWorkEnd" data-i18n="set.workEnd"></label><input class="input" id="setWorkEnd" name="work_end" type="time"></div>
+                    </div>
+                    <div class="field-hint mb" data-i18n="set.workHint"></div>
+                    <div class="set-fields">
+                        <div class="field"><label for="setActive" data-i18n="set.activeMinutes"></label><input class="input" id="setActive" name="active_minutes" type="number" step="1" min="10" max="1440" inputmode="numeric"></div>
+                        <div class="field"><label for="setDone" data-i18n="set.doneIdleHours"></label><input class="input" id="setDone" name="done_idle_hours" type="number" step="1" min="1" max="720" inputmode="numeric"></div>
+                    </div>
+                    <div class="field-hint" data-i18n="set.doneHint"></div>
+                </div>
+                <div class="card">
+                    <div class="card-title mb" data-i18n="set.alerts"></div>
+                    <div class="field"><label for="setStreak" data-i18n="set.failStreak"></label><input class="input" id="setStreak" name="fail_streak" type="number" step="1" min="2" max="50" inputmode="numeric"></div>
+                    <div class="field"><label for="setTpDrop" data-i18n="set.tpDrop"></label><input class="input" id="setTpDrop" name="tp_drop_pct" type="number" step="1" min="5" max="90" inputmode="numeric"></div>
+                    <div class="field"><label for="setBehind" data-i18n="set.behind"></label><input class="input" id="setBehind" name="behind_pct" type="number" step="1" min="5" max="90" inputmode="numeric"></div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-head"><div class="card-title" data-i18n="set.uph"></div></div>
+                <p class="field-hint mb" data-i18n="set.uphHint"></p>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr>
+                            <th data-i18n="set.col.product"></th><th class="num" data-i18n="set.col.median"></th><th class="num" data-i18n="set.col.wos"></th>
+                            <th data-i18n="set.col.override"></th><th class="num" data-i18n="set.col.inUse"></th>
+                        </tr></thead>
+                        <tbody id="setUphRows"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="toolbar">
+                <button class="btn primary" type="submit" id="btnSetSave" data-i18n="set.save"></button>
+                <button class="btn" type="button" id="btnSetDefaults" data-i18n="set.defaults"></button>
+                <div class="form-msg" id="setMsg" aria-live="polite"></div>
+            </div>
+        </form>
     </section>
 
     </div>
