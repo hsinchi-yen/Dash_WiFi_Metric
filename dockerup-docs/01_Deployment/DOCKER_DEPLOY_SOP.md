@@ -5,15 +5,21 @@
 > **更新既有的正式機（新版網頁看板）請用 `deploy.sh`**，不要手動複製：
 >
 > ```bash
-> dockerup-docs/01_Deployment/deploy.sh --local                  # 先在本機演練一次
+> dockerup-docs/01_Deployment/deploy.sh --replica <正式機複本資料夾>   # 先在本機的正式機複本演練（tests/switch_rehearsal.sh）
 > SSHPASS=… dockerup-docs/01_Deployment/deploy.sh --host sit@10.20.31.40
 > ```
 >
-> 它依序：備份正式資料庫 → 用這份備份跑 `tests/db_compat.sh`（必須 COMPATIBLE，完整紀錄存在
-> `DB_backups/db_compat_<時間>.log`）→ 打包目前的程式（還原用）→
-> 同步程式（`docker-data`、`logs`、`.env`、伺服器自己的其他檔案都不動）→ 只重建 / 重啟 `api` 與 `nginx`（`postgres`、
-> `grafana` 不動）→ 健康檢查；失敗自動把程式還原成部署前的版本。資料庫不需要還原：舊版 API 在升級過的資料庫上照常運作
-> （db_compat 已驗證），要完全回到舊結構時再執行 `02_Maintenance/scripts/rollback_web_additions.sql`。
+> 它依序做這些事：
+> 1. 在正式機上備份到 `DB_backups/predeploy_<時間>/`，內容有資料庫、程式、容器設定、當時的 API 映像；再複製一份到開發機並核對 SHA256。
+> 2. 用這份備份跑 `tests/db_compat.sh`。必須 COMPATIBLE，完整紀錄存在 `DB_backups/db_compat_<時間>.log`。
+> 3. 第一次部署時，把正在跑的程式存成 `releases/old`；這次的 commit 放到 `releases/new_<commit>`。
+> 4. 用 `releases/switch.sh` 切到新版：只重建 `api` 與 `nginx`，`postgres`、`grafana` 不動。沒起來會自動切回。
+> 5. 健康檢查。
+>
+> **之後要切回舊看板：在正式機上執行 `releases/switch.sh old`；再切回新版：`releases/switch.sh new`**（各約 10 秒，見 `SWITCH_RELEASE.md`）。
+>
+> 資料庫不需要還原：舊版 API 在升級過的資料庫上照常運作（db_compat 已驗證）。要完全回到舊結構用 `switch.sh old --drop-web-tables`。
+>
 > 部署後看板網址不變（`http://<主機>:8000`），舊的 `/legacy/` 會轉到新看板。下文是全新伺服器的安裝步驟。
 
 ## 1. 環境需求

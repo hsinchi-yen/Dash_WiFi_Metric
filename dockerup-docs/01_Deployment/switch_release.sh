@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Switch the WiFi YFP dashboard between deployed releases: the old single-page dashboard and the new web dashboard.
 # Runs on the production host itself, installed by deploy.sh as <project>/releases/switch.sh; needs only docker
-# (the sit user is in the docker group). About a minute; PostgreSQL and Grafana keep running throughout.
+# (the sit user is in the docker group). About 10 seconds; PostgreSQL and Grafana keep running throughout.
 #
 #   releases/switch.sh status                       which release is live, what can be switched to
 #   releases/switch.sh old                          back to the dashboard that ran before the deployment

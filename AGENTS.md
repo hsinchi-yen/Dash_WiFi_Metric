@@ -41,6 +41,14 @@ docker restart wifitest-api                                                     
 ```
 Front-end edits show up on reload (nginx serves the folder). Administrator: `TWEAK_USER` / `TWEAK_PASS` (qc / qcpass).
 
+## Production
+
+`sit@10.20.31.40:/mnt/md127/WIFI_YFP_DashBoard` (not git). Deployed with `dockerup-docs/01_Deployment/deploy.sh --host …`
+(rehearse first with `--replica` and `tests/switch_rehearsal.sh`). Every deployed version stays in `releases/` there
+(`old` = the pre-refactor dashboard, `new_<commit>`, `CURRENT`); `releases/switch.sh old|new|status` switches in about
+10 s without touching PostgreSQL or Grafana (`SWITCH_RELEASE.md`). Pre-deployment backups: `DB_backups/predeploy_<ts>/` on
+the host and here. The host also runs unrelated stacks (pixi-test on 8001/5433, iw-solo-pixi on 8003/5434): never touch them.
+
 ## Tests
 
 `tests/run_all.sh` (set `SAMPLE_ZIP` for the upload suites, `--quick` to skip the slow ones, `--compat <dump>` for the

@@ -7,8 +7,8 @@
 
 ```bash
 cd /mnt/md127/WIFI_YFP_DashBoard
-releases/switch.sh old      # 切回部署前的舊看板（約 1 分鐘）
-releases/switch.sh new      # 再切回新看板（約 1 分鐘）
+releases/switch.sh old      # 切回部署前的舊看板（約 10 秒）
+releases/switch.sh new      # 再切回新看板（約 10 秒）
 releases/switch.sh status   # 現在跑哪一版、有哪些版本可切
 releases/switch.sh help     # 全部指令
 ```
@@ -34,7 +34,7 @@ releases/switch.sh help     # 全部指令
 1. 檢查：版本資料夾、它的 compose 檔、它的 API 映像、資料庫容器在跑。`switch.sh check old` 只做這一步，不改任何東西。
 2. 把該版本的程式複製到 `dockerup-essential/`。`docker-data`、`logs`、`WiFiTestLogs`、`build`、`dist`、`grafana`、`.env` 不動。
 3. 重建 api，新看板另有 nginx；該版本沒有的容器會移除，例如切回舊版時的 nginx。
-4. 等 `/health` 與首頁回應。**兩分鐘內沒起來就自動切回原來那一版**，並把 api 的最後幾行 log 印出來。
+4. 等 `/health` 與首頁回應。**兩分鐘內沒起來就自動切回原來那一版**（2026-10-22 在正式機實測：切舊版 7.7 秒、切新版 11.8 秒），並把 api 的最後幾行 log 印出來。
 
 ## 資料庫也要回到部署前的結構（通常不需要）
 
