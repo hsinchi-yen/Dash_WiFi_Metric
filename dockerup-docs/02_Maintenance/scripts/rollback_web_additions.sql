@@ -17,6 +17,8 @@ BEGIN;
 DROP MATERIALIZED VIEW IF EXISTS mv_unit;
 
 DROP TABLE IF EXISTS
+    fail_analysis,
+    fail_taxonomy,
     wo_report,
     wo_status_note,
     upload_log_item,

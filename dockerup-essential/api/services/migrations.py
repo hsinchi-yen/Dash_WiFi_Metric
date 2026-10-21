@@ -13,6 +13,7 @@ desktop rows stay NULL). Everything else new lives in separate objects:
   upload_log / upload_log_item                           web uploads and their per-file results
   wo_status_note    L1 one-line status note per work order (settings live in app_meta "settings")
   wo_report         L3 structured final report per work order
+  fail_taxonomy / fail_analysis                          5F failure categories and one classification per FAIL run
 
 Old-database compatibility (tests/db_compat.sh must print COMPATIBLE before a deployment):
   - never alter, drop or constrain test_record or the old views v_yield_by_wo / v_unstable_units /
@@ -239,6 +240,62 @@ TABLES = (
         requested_by  TEXT,
         PRIMARY KEY (work_order, product_model)
     )""",
+    # 5F: failure taxonomy (RD maintains it) and one classification per FAIL test run. record_id is a
+    # test_record id WITHOUT a foreign key: the old DB Tweak deletes test rows directly (orphans are swept).
+    """CREATE TABLE IF NOT EXISTS fail_taxonomy (
+        code           TEXT PRIMARY KEY,
+        name_zh        TEXT NOT NULL,
+        name_en        TEXT NOT NULL,
+        description_zh TEXT,
+        description_en TEXT,
+        severity       INT NOT NULL DEFAULT 5,
+        likely_stage   TEXT,
+        action_zh      TEXT,
+        action_en      TEXT,
+        enabled        BOOLEAN NOT NULL DEFAULT TRUE,
+        sort           INT NOT NULL DEFAULT 100,
+        updated_by     TEXT,
+        updated_at     TIMESTAMPTZ DEFAULT NOW()
+    )""",
+    """CREATE TABLE IF NOT EXISTS fail_analysis (
+        record_id          BIGINT PRIMARY KEY,
+        sn                 TEXT,
+        work_order         TEXT,
+        product_model      TEXT,
+        test_time          TIMESTAMP,
+        category           TEXT NOT NULL,
+        secondary          TEXT[] NOT NULL DEFAULT '{}',
+        band               TEXT,
+        mbps               REAL,
+        threshold          REAL,
+        rssi               REAL,
+        attempts           INT,
+        measures           JSONB,
+        evidence           JSONB,
+        station_port       TEXT,
+        ssid_group         TEXT,
+        target_ssid        TEXT,
+        retest_outcome     TEXT,
+        run_seq            TEXT,
+        run_index          INT,
+        classifier         TEXT NOT NULL,
+        classifier_version INT,
+        confidence         REAL,
+        llm_model          TEXT,
+        llm_tried_at       TIMESTAMPTZ,
+        stage              TEXT,
+        rd_status          TEXT NOT NULL DEFAULT 'new',
+        rd_owner           TEXT,
+        rd_note            TEXT,
+        rd_by              TEXT,
+        rd_at              TIMESTAMPTZ,
+        created_at         TIMESTAMPTZ DEFAULT NOW(),
+        updated_at         TIMESTAMPTZ DEFAULT NOW()
+    )""",
+    "CREATE INDEX IF NOT EXISTS fail_analysis_category_idx ON fail_analysis (category)",
+    "CREATE INDEX IF NOT EXISTS fail_analysis_wo_idx ON fail_analysis (work_order, product_model)",
+    "CREATE INDEX IF NOT EXISTS fail_analysis_time_idx ON fail_analysis (test_time)",
+    "CREATE INDEX IF NOT EXISTS fail_analysis_station_idx ON fail_analysis (ssid_group, station_port)",
 )
 
 # Columns added later to this project's own tables (never to test_record).
@@ -246,6 +303,7 @@ OWN_COLUMNS = (
     ("wo_plan", "admin_qty", "INT"),            # the administrator's planned quantity (kept when upload batches are undone)
     ("wo_plan", "admin_by", "TEXT"),
     ("wo_plan", "admin_at", "TIMESTAMPTZ"),
+    ("app_users", "role", "TEXT NOT NULL DEFAULT 'uploader'"),   # uploader | rd (5F)
 )
 
 
@@ -306,6 +364,9 @@ def run():
             meta_set(cur, "mv_unit_version", MV_VERSION)
             meta_set(cur, REFRESHED_AT_KEY, now_iso())
             log.info("mv_unit (version %s) created", MV_VERSION)
+
+        from services import fail_taxonomy
+        fail_taxonomy.seed(cur)      # new codes only: what RD changed stays
 
         if meta_get(cur, "product_registry_seeded") != "1":
             added = products.seed_from_data(cur)

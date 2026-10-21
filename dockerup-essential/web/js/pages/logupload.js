@@ -33,7 +33,8 @@ function setStatus(id, text, kind = '') {
 function renderAccess() {
     const user = auth.currentUser();
     $('#luLogin').hidden = !!user;
-    $('#luPanel').hidden = !user;
+    $('#luDenied').hidden = !user || auth.canUpload();
+    $('#luPanel').hidden = !user || !auth.canUpload();
     const admin = auth.isAdmin();
     $('#luHistoryUser').hidden = !admin;
     $('#luHistoryFilterLabel').hidden = !admin;
@@ -587,7 +588,7 @@ async function loadUploaderOptions() {
 }
 
 async function loadHistory() {
-    if (!auth.isSignedIn()) return;
+    if (!auth.isSignedIn() || !auth.canUpload()) return;     // RD accounts have no upload history
     const tbody = $('#luHistoryRows');
     const filterUser = auth.isAdmin() ? $('#luHistoryUser').value : '';
     try {

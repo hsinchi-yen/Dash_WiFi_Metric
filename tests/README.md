@@ -36,3 +36,12 @@ Phase 5B (Dashboard hourly output, work-order detail, comparison, administrator 
 | `python3 tests/acceptance_phase5b.py [BASE]` | Dashboard hourly output (07:00–19:00, sums, target), detail numbers and the previous same-product work order, comparisons (any two, same → 400, unknown → 404), planned quantity (401 / 403 / invalid / set / clear / audit), batches, the final report of a normal and a red work order (every number a fact, normal = summary only, causes phrased as possibilities), follow-up questions, rate limit. Sets and clears one plan. |
 | `python3 tests/e2e_phase5b.py [BASE] [OUT_DIR]` | Browser: Dashboard split tile + hourly chart (no scrolling at 1080p), Work Orders → detail, comparison select, report, suggested question, 中文, compare-two from the list, administrator plan set / clear, Fail List link. |
 | `docker run … python3 /tests/unit_plan_revert.py` | The planned quantity when upload batches are undone, in seven orders of batches and administrator changes, against the real schema in a rolled-back transaction (command in the file). |
+
+Phase 5F-1 (failure classification, RD role):
+
+| Command | What it does |
+|---|---|
+| `python3 tests/unit_fail_rules.py` | The FAIL log classifier (`services/fail_rules.py`, no database) on synthetic logs in the production format: every category, severity order, untested Bluetooth, a reboot mid-test, noise lines never evidence, station, retest outcome, the LLM excerpt and the evidence check. Shared samples: `tests/fail_log_samples.py`. |
+| `docker run … python3 /tests/check_fail_classification.py` | On the real database (command in the file): all FAIL runs classified and equal to the current rules, consistent with the desktop parser's band flags, not-retested = units still failing; a FAIL run written with the desktop `log_parser.write_record` is classified, a later PASS turns it into "passed on retest", deleting it (old DB Tweak) removes its classification; a log no rule knows goes to the LLM and only verbatim evidence lines are accepted. Synthetic rows are removed again. |
+| `python3 tests/acceptance_phase5f1.py [BASE]` | Taxonomy, the 223 FAIL runs by category and retest outcome, stations, FAIL list / detail / report facts, date ranges on every date-filtered endpoint (regression), and the RD role (creates `test_rd`). |
+| `python3 tests/e2e_phase5f1.py [BASE] [OUT_DIR]` | Browser: custom September range on the Dashboard, Fail List categories / run sequences / stations, the detail page's failure categories, the RD account's view, the role select in Accounts. |

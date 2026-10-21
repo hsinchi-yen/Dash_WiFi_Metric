@@ -5,10 +5,10 @@ import { apiDelete, apiGet, apiPost, download, request } from '../core/api.js';
 import * as auth from '../core/auth.js';
 import * as charts from '../core/charts.js';
 import { bucketLabels, esc, fmtDate, fmtDateTime, fmtInt, fmtNum, fmtPct, yieldLevel } from '../core/format.js';
-import { getLang, joinList, t } from '../core/i18n.js';
+import { getLang, joinList, localized, t } from '../core/i18n.js';
 import { queryString } from '../core/scope.js';
 import { $, openFormModal, tableState, toast } from '../core/ui.js';
-import { reasonText } from './fails.js';
+import { categoryBadge, reasonText, runSeqHtml, stationText } from './fails.js';
 import { renderBands } from './overview.js';
 import { flagText } from './workorders.js';
 
@@ -54,7 +54,7 @@ function renderTiles(d) {
     $('#wdTiles').innerHTML = [
         tile(t('wo.col.plan'), tested, s.planned ? `${esc(fmtNum(s.achieved_pct, 0))}% · ${planSub}` : planSub),
         tile(t('wo.col.yield'), esc(fmtPct(s.yield_pct)), esc(t('wd.yieldSub', { pass: fmtInt(s.passed), fail: fmtInt(s.failed) })), `v-${yieldLevel(s.yield_pct)}`),
-        tile('FAIL', esc(fmtInt(s.failed)), ex.fail_reasons.length ? esc(joinList(ex.fail_reasons.slice(0, 2).map(r => `${reasonText(r.reason)} ${r.units}`))) : '', s.failed ? 'v-fail' : ''),
+        tile('FAIL', esc(fmtInt(s.failed)), ex.fail_reasons.length ? esc(joinList(ex.fail_reasons.slice(0, 2).map(r => `${catName(r)} ${r.units}`))) : '', s.failed ? 'v-fail' : ''),
         tile(t('wo.col.retry'), esc(fmtPct(m.retry_rate)), esc(t('wd.retrySub', { units: fmtInt(ex.retry_units), runs: fmtInt(ex.test_runs) }))),
         tile(t('wd.p50_24g'), esc(fmtNum(s.p50_24g, 1)), s.hist_p50_24g ? esc(t('wd.usual', { n: fmtNum(s.hist_p50_24g, 1) })) : 'Mbps'),
         tile(t('wd.p50_5g'), esc(fmtNum(s.p50_5g, 1)), s.hist_p50_5g ? esc(t('wd.usual', { n: fmtNum(s.hist_p50_5g, 1) })) : 'Mbps'),
@@ -62,6 +62,25 @@ function renderTiles(d) {
              s.uph_target_source ? `<span title="${esc(t(`wo.targetSource.${s.uph_target_source}`))}">${esc(t(`wd.target.${s.uph_target_source}`))}</span>` : ''),
         tile(t('wd.streak'), esc(fmtInt(s.max_fail_streak)), esc(t('wd.streakSub'))),
     ].join('');
+}
+
+const catName = r => localized(r.name_zh, r.name_en) || reasonText(r.code || r.reason);
+
+/** FAIL runs of the work order by category × what the retest showed, and the stations involved (5F). */
+function renderFailCats(d) {
+    const fr = d.extra.fail_runs;
+    const card = $('#wdFailCatCard');
+    card.hidden = !fr?.total_runs;
+    if (card.hidden) return;
+    $('#wdFailCatNote').textContent = t('wd.failCatsNote', { runs: fmtInt(fr.total_runs), pass: fmtInt(fr.retest.pass_on_retest || 0) });
+    $('#wdFailCatRows').innerHTML = fr.categories.map(c => `<tr>
+        <td title="${esc(localized(c.action_zh, c.action_en) || '')}"><span class="badge fail">${esc(localized(c.name_zh, c.name_en) || c.category)}</span></td>
+        <td class="num">${fmtInt(c.runs)}</td><td class="num">${fmtInt(c.units)}</td>
+        <td class="num ${c.pass_on_retest ? 'good-text' : 'muted'}">${fmtInt(c.pass_on_retest)}</td>
+        <td class="num ${c.failed_again ? 'bad-text' : 'muted'}">${fmtInt(c.failed_again)}</td>
+        <td class="num ${c.not_retested ? 'warn-text' : 'muted'}">${fmtInt(c.not_retested)}</td></tr>`).join('');
+    $('#wdStationRows').innerHTML = fr.stations.slice(0, 6).map(s => `<tr><td>${esc(stationText(s))}</td>
+        <td class="num">${fmtInt(s.runs)}</td><td class="num">${fmtInt(s.units)}</td></tr>`).join('');
 }
 
 function renderChecks(d) {
@@ -171,7 +190,8 @@ function factRows(f) {
         [t('wd.p50_5g'), `${fmtNum(f.p50_5g, 1)} (${t('wd.usual', { n: fmtNum(f.usual_p50_5g, 1) })})`],
         [t('wo.col.uphTarget'), `${fmtNum(f.uph, 1)} / ${fmtNum(f.uph_target, 1)}`], [t('wd.streak'), fmtInt(f.max_fail_streak)],
         [t('wd.period2'), `${f.first_test} – ${f.last_test}`],
-        [t('fails.col.reason'), f.fail_reasons?.length ? joinList(f.fail_reasons.map(r => `${reasonText(r.reason)} ${r.units}`)) : '—'],
+        [t('wd.failingUnits'), f.failing_units_by_category?.length ? joinList(f.failing_units_by_category.map(r => `${r.category} ${r.units}`)) : '—'],
+        [t('wd.failCats'), f.fail_runs_by_category?.length ? joinList(f.fail_runs_by_category.map(r => t('wd.failRunsFact', { cat: r.category, runs: r.fail_runs, pass: r.passed_on_retest }))) : '—'],
     ];
     if (f.previous) rows.push([t('wd.previous'), `${f.previous.work_order} (${fmtPct(f.previous.yield_pct)}, ${fmtInt(f.previous.total)})`]);
     return rows;
@@ -254,15 +274,16 @@ async function loadFails() {
     $('#wdFailsLink').hidden = true;
     try {
         const data = await apiGet(`/api/fail-list${queryString({ ...keyParams(), page_size: 50 })}`);
-        if (!data.items.length) { tableState(tbody, 8, 'empty', t('wd.noFails')); return; }
+        if (!data.items.length) { tableState(tbody, 10, 'empty', t('wd.noFails')); return; }
         tbody.innerHTML = data.items.map(r => `<tr>
             <td class="nowrap">${esc(fmtDateTime(r.test_time))}</td><td><code>${esc(r.sn)}</code></td><td><code>${esc(r.wifi_mac || '—')}</code></td>
-            <td><span class="badge fail">${esc(reasonText(r.fail_reason))}</span></td>
+            <td class="nowrap">${categoryBadge(r.analysis, r.fail_reason)}</td><td class="nowrap">${runSeqHtml(r.analysis)}</td>
+            <td class="nowrap small-text">${esc(stationText(r.analysis))}</td>
             <td class="num">${fmtNum(r.avg_24g, 1)}</td><td class="num">${fmtNum(r.avg_5g, 1)}</td><td class="num">${fmtInt(r.sn_runs)}</td>
             <td><button class="btn small" type="button" data-log="${r.id}">${esc(t('fails.download'))}</button></td></tr>`).join('');
         if (data.total > data.items.length) { $('#wdFailsLink').hidden = false; $('#wdFailsLink').textContent = t('wd.failsAll', { n: fmtInt(data.total) }); }
     } catch (err) {
-        tableState(tbody, 8, 'error', t('common.loadFailedMsg', { error: err.message }), loadFails);
+        tableState(tbody, 10, 'error', t('common.loadFailedMsg', { error: err.message }), loadFails);
     }
 }
 
@@ -327,6 +348,7 @@ async function load(app) {
         renderHead(d);
         renderTiles(d);
         renderChecks(d);
+        renderFailCats(d);
         fillCompareSelect(d, p.cmp ? [p.cmp, p.cpm] : null);
         chooseCompare($('#wdCompareSel').value);
         renderCharts(d);
@@ -372,5 +394,5 @@ export default {
     id: 'wo', scoped: false, init, load,
     isBusy: () => st.ask.some(x => x.a === null),
     onAuthChange: () => { if (appRef?.page?.id === 'wo' && st.data) { $('#btnWdPlan').hidden = !auth.isAdmin(); loadBatches(); } },
-    onLangChange: () => { if (st.data) { renderHead(st.data); renderTiles(st.data); renderChecks(st.data); chooseCompare($('#wdCompareSel').value); renderAsk(); if (st.report) renderReport(st.report); } },
+    onLangChange: () => { if (st.data) { renderHead(st.data); renderTiles(st.data); renderChecks(st.data); renderFailCats(st.data); chooseCompare($('#wdCompareSel').value); renderAsk(); if (st.report) renderReport(st.report); } },
 };

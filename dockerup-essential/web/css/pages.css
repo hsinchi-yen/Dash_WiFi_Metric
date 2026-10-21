@@ -157,3 +157,13 @@ details summary { cursor: pointer; color: var(--text-2); font-size: 13px; margin
 .msg.refused { border-color: var(--warn); }
 @media (max-width: 1600px) { .wd-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .wd-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ─── Failure categories (5F) ───────────────────────────────────────────── */
+.badge.cat { cursor: help; }
+.chip-more { font-size: 11px; font-weight: 800; color: var(--text-2); border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; cursor: help; }
+.runseq { display: inline-flex; gap: 2px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; cursor: help; }
+.runseq b { display: inline-grid; place-items: center; width: 16px; height: 18px; border-radius: 3px; font-weight: 800; }
+.runseq b.p { background: var(--good-bg); color: var(--good); }
+.runseq b.f { background: var(--bad-bg); color: var(--bad); }
+.runseq b.me { box-shadow: inset 0 -2px 0 currentColor; }
+.wd-failcat { align-items: start; }

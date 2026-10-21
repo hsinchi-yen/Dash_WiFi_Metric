@@ -584,6 +584,11 @@ def _after_change() -> None:
         stats.refresh(wait=True)
     except Exception:
         log.exception("statistics refresh after upload failed")
+    try:
+        from services import fail_classify
+        fail_classify.scan()              # classify the batch's FAIL runs now (also catches undone rows)
+    except Exception:
+        log.exception("fail classification after upload failed")
 
 
 # ─── Revert ──────────────────────────────────────────────────────────────────

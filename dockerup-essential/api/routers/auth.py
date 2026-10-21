@@ -23,8 +23,9 @@ def login(request: Request, body: LoginBody):
             ok = hmac.compare_digest(password.encode(), config.TWEAK_PASS.encode())
             reason = None if ok else "bad_password"
         else:
-            username, role = auth_utils.normalize_username(raw_user), "uploader"
-            user = db.fetch_one(conn, "SELECT display_name, password_hash, enabled FROM app_users WHERE username = %s", (username,))
+            username = auth_utils.normalize_username(raw_user)
+            user = db.fetch_one(conn, "SELECT display_name, password_hash, enabled, role FROM app_users WHERE username = %s", (username,))
+            role = (user or {}).get("role") or "uploader"
             ok = auth_utils.verify_password(password, user["password_hash"] if user else auth_utils.dummy_hash())
             display_name = user["display_name"] if user else None
             if not user:
@@ -50,7 +51,7 @@ def login(request: Request, body: LoginBody):
             RETURNING expires_at
         """, (auth_utils.token_hash(token), username, role, auth.admin_fingerprint() if role == "admin" else None,
               config.SESSION_TTL_HOURS * 3600, auth.client_ip(request)))
-        if role == "uploader":
+        if role != "admin":
             db.execute(conn, "UPDATE app_users SET last_login_at = NOW(), last_login_ip = %s WHERE username = %s",
                        (auth.client_ip(request), username))
         auth.auth_log(conn, request, username, "login", True)
@@ -75,7 +76,7 @@ def me(user=Depends(auth.current_user)):
 @router.post("/change-password")
 def change_password(request: Request, body: ChangePasswordBody, user=Depends(auth.current_user)):
     """Uploaders change their own password; their other sessions are signed out, this one stays."""
-    if user["role"] != "uploader":
+    if user["role"] == "admin":
         raise bad_request(Msg("管理者密碼由伺服器環境變數設定，無法在網頁上修改",
                               "The administrator password is set on the server and cannot be changed here."), "admin_password")
     error = auth_utils.password_error(body.new_password)

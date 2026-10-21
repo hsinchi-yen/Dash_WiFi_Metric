@@ -146,7 +146,7 @@ def ask(request: Request, body: AskBody):
 @router.get("/api/wo-batches")
 def batches(work_order: str = Query(..., max_length=64), user=Depends(auth.current_user)):
     where, params = "WHERE l.work_order = %s AND l.status NOT IN ('analyzed', 'receiving')", [work_order]
-    if user["role"] != "admin":
+    if user["role"] not in ("admin", "rd"):      # uploaders see their own batches; RD reads everything
         where += " AND l.username = %s"
         params.append(user["username"])
     with db.db() as conn:

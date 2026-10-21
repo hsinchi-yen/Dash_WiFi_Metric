@@ -57,7 +57,7 @@ export function toast(message, kind = '') {
 
 /* ─── Form dialog ───────────────────────────────────────────────────────────
    openFormModal({ title, desc, fields: [{ name, label, type, value, required,
-   autocomplete, hint, maxlength }], submitLabel, onSubmit(values) → error text | null }) */
+   autocomplete, hint, maxlength, options: [{ value, label }] (type 'select') }], submitLabel, onSubmit(values) → error text | null }) */
 const formState = { onSubmit: null, lastFocus: null };
 
 export function openFormModal({ title, desc = '', fields, submitLabel, onSubmit }) {
@@ -76,11 +76,19 @@ export function openFormModal({ title, desc = '', fields, submitLabel, onSubmit 
         label.htmlFor = `fm_${f.name}`;
         label.textContent = f.label + (f.required ? ' *' : '');
         label.dataset.required = f.required ? '1' : '';
-        const input = document.createElement('input');
-        Object.assign(input, {
-            id: `fm_${f.name}`, name: f.name, type: f.type || 'text', value: f.value ?? '',
-            autocomplete: f.autocomplete || 'off', spellcheck: false, className: 'input',
-        });
+        let input;
+        if (f.type === 'select') {
+            input = document.createElement('select');
+            Object.assign(input, { id: `fm_${f.name}`, name: f.name, className: 'select' });
+            (f.options || []).forEach(o => input.appendChild(new Option(o.label, o.value)));
+            input.value = f.value ?? (f.options?.[0]?.value || '');
+        } else {
+            input = document.createElement('input');
+            Object.assign(input, {
+                id: `fm_${f.name}`, name: f.name, type: f.type || 'text', value: f.value ?? '',
+                autocomplete: f.autocomplete || 'off', spellcheck: false, className: 'input',
+            });
+        }
         if (f.maxlength) input.maxLength = f.maxlength;
         row.append(label, input);
         if (f.hint) {
@@ -110,7 +118,7 @@ export function initFormModal() {
         e.preventDefault();
         if (!formState.onSubmit) return;
         const values = {};
-        $$('#formModalFields input').forEach(input => { values[input.name] = input.value; });
+        $$('#formModalFields input, #formModalFields select').forEach(input => { values[input.name] = input.value; });
         const missing = $$('#formModalFields label')
             .filter(l => l.dataset.required && !values[l.htmlFor.slice(3)].trim())
             .map(l => l.textContent.replace(/ \*$/, ''));

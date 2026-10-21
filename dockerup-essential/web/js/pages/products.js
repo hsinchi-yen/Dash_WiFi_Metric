@@ -16,6 +16,7 @@ function renderAccess() {
     const signedIn = auth.isSignedIn();
     $('#prodLogin').hidden = signedIn;
     $('#prodPanel').hidden = !signedIn;
+    $('#btnProdNew').hidden = !auth.canUpload();      // RD accounts read the list only
 }
 
 function sourceLabel(src) {

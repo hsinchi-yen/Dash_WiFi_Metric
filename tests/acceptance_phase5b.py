@@ -173,8 +173,9 @@ for key in (NORMAL, RED):
         check("causes are phrased as possibilities", all("可能" in x for x in part["causes"]) and
               all(any(w in x.lower() for w in ("may", "possibl", "could", "might")) for x in r["report"]["en"]["causes"]),
               part["causes"])
-check("facts table carries the thresholds, fail reasons and the previous work order",
-      r["facts"]["thresholds"]["yield_good"] == 98 and r["facts"]["fail_reasons"] and "previous" in r["facts"])
+check("facts table carries the thresholds, the failure categories (5F) and the previous work order",
+      r["facts"]["thresholds"]["yield_good"] == 98 and r["facts"]["fail_runs_by_category"] and r["facts"]["failing_units_by_category"]
+      and "previous" in r["facts"])
 
 # ── Follow-up questions ──
 for question, lang in (("為什麼這張工單是紅燈？", "zh"), ("How does it compare with the previous work order?", "en")):

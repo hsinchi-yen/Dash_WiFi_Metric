@@ -284,7 +284,7 @@ function renderAuthBox(user) {
     if (user) {
         $('#authName').textContent = t('auth.user', { name: auth.displayName(user) });
         $('#authName').title = auth.displayName(user);
-        $('#authRole').textContent = auth.isAdmin() ? t('auth.admin') : t('auth.uploader');
+        $('#authRole').textContent = auth.isAdmin() ? t('auth.admin') : auth.isRd() ? t('auth.rd') : t('auth.uploader');
         $('#btnChangePw').hidden = auth.isAdmin();   // the administrator password lives in the server environment
     }
     // Administrator-only pages stay reachable by address; the menu just does not advertise them.

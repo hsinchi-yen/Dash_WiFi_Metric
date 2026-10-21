@@ -15,13 +15,16 @@ from fastapi import APIRouter, Query
 from fastapi.responses import Response
 
 from errors import not_found, Msg
-from services import analytics, stats, wo_notes, wo_status
+from services import analytics, fail_classify, stats, wo_notes, wo_status
 
 router = APIRouter(tags=["analytics"])
 
 Scope = Query(default="latest_day", pattern="^(latest_day|year)$")
 Year = Query(default=None, ge=2000, le=2100)
-IsoDate = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+# A new Query() per parameter: one shared Query object for date_from AND date_to makes FastAPI see a single
+# parameter, so both received date_from (every date range shrank to its first day).
+def iso_date():
+    return Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _opt(value: Optional[str]) -> Optional[str]:
@@ -118,7 +121,7 @@ def filter_options() -> dict[str, Any]:
 
 
 @router.get("/api/overview")
-def overview(date_from: Optional[str] = IsoDate, date_to: Optional[str] = IsoDate,
+def overview(date_from: Optional[str] = iso_date(), date_to: Optional[str] = iso_date(),
              work_order: Optional[str] = None, product_model: Optional[str] = None) -> dict[str, Any]:
     """Everything the dashboard page shows, in one response."""
     data = analytics.overview(date_from, date_to, _opt(work_order), _opt(product_model))
@@ -127,7 +130,7 @@ def overview(date_from: Optional[str] = IsoDate, date_to: Optional[str] = IsoDat
 
 
 @router.get("/api/work-order-summary")
-def work_order_summary(date_from: Optional[str] = IsoDate, date_to: Optional[str] = IsoDate,
+def work_order_summary(date_from: Optional[str] = iso_date(), date_to: Optional[str] = iso_date(),
                        work_order: Optional[str] = None, product_model: Optional[str] = None) -> list[dict[str, Any]]:
     """One row per work order in the range. `status` (state, light, flags, plan, hourly rate, the one-line
     note) describes the whole work order, not just the part inside the range."""
@@ -142,15 +145,19 @@ def work_order_summary(date_from: Optional[str] = IsoDate, date_to: Optional[str
 
 
 @router.get("/api/fail-list")
-def fail_list(date_from: Optional[str] = IsoDate, date_to: Optional[str] = IsoDate,
+def fail_list(date_from: Optional[str] = iso_date(), date_to: Optional[str] = iso_date(),
               work_order: Optional[str] = None, product_model: Optional[str] = None,
               search: Optional[str] = Query(default=None, max_length=64),
               page: int = Query(default=1, ge=1), page_size: int = Query(default=50, ge=1, le=500)) -> dict[str, Any]:
-    return analytics.fail_list(date_from, date_to, _opt(work_order), _opt(product_model), search, page, page_size)
+    data = analytics.fail_list(date_from, date_to, _opt(work_order), _opt(product_model), search, page, page_size)
+    found = fail_classify.for_records([r["id"] for r in data["items"]])
+    for r in data["items"]:
+        r["analysis"] = found.get(int(r["id"]))      # 5F classification of this FAIL run (None until classified)
+    return data
 
 
 @router.get("/api/rf")
-def rf(date_from: Optional[str] = IsoDate, date_to: Optional[str] = IsoDate,
+def rf(date_from: Optional[str] = iso_date(), date_to: Optional[str] = iso_date(),
        work_order: Optional[str] = None, product_model: Optional[str] = None) -> dict[str, Any]:
     return analytics.rf(date_from, date_to, _opt(work_order), _opt(product_model))
 

@@ -167,7 +167,8 @@
                 <table>
                     <thead><tr>
                         <th data-i18n="fails.col.time"></th><th data-i18n="wo.col.wo"></th><th data-i18n="wo.col.product"></th>
-                        <th>SN</th><th data-i18n="fails.col.mac"></th><th data-i18n="fails.col.reason"></th>
+                        <th>SN</th><th data-i18n="fails.col.mac"></th><th data-i18n="fails.col.category"></th>
+                        <th data-i18n="fails.col.retest"></th><th data-i18n="fails.col.station"></th>
                         <th class="num" data-i18n="fails.col.tp24"></th><th class="num" data-i18n="fails.col.tp5"></th>
                         <th class="num" data-i18n="fails.col.rssi5"></th><th class="num" data-i18n="fails.col.runs"></th><th data-i18n="fails.col.log"></th>
                     </tr></thead>
@@ -299,6 +300,7 @@
             <button class="btn primary full" type="button" id="btnLuLogin" data-i18n="common.signIn"></button>
             <div class="form-msg" id="luLoginMsg" aria-live="polite"></div>
         </div>
+        <div class="card" id="luDenied" hidden><div class="state-msg" data-i18n="lu.deniedRd"></div></div>
         <div class="stack" id="luPanel" hidden>
             <div class="notice" data-i18n="lu.howto"></div>
             <div class="card">
@@ -564,6 +566,24 @@
                     </div>
                 </div>
             </div>
+            <div class="card" id="wdFailCatCard" hidden>
+                <div class="card-head"><div class="card-title" data-i18n="wd.failCats"></div><div class="card-note" id="wdFailCatNote"></div></div>
+                <div class="grid cols-2 wd-failcat">
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th data-i18n="fails.col.category"></th><th class="num" data-i18n="wd.col.runs"></th><th class="num" data-i18n="wd.col.units"></th>
+                                <th class="num" data-i18n="fails.retest.pass_on_retest"></th><th class="num" data-i18n="fails.retest.failed_again"></th><th class="num" data-i18n="fails.retest.not_retested"></th></tr></thead>
+                            <tbody id="wdFailCatRows"></tbody>
+                        </table>
+                    </div>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th data-i18n="fails.col.station"></th><th class="num" data-i18n="wd.col.runs"></th><th class="num" data-i18n="wd.col.units"></th></tr></thead>
+                            <tbody id="wdStationRows"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
             <div class="card" id="wdReportCard">
                 <div class="card-head">
                     <div class="card-title" data-i18n="wd.report"></div>
@@ -594,7 +614,8 @@
                 <div class="table-wrap">
                     <table>
                         <thead><tr>
-                            <th data-i18n="fails.col.time"></th><th>SN</th><th data-i18n="fails.col.mac"></th><th data-i18n="fails.col.reason"></th>
+                            <th data-i18n="fails.col.time"></th><th>SN</th><th data-i18n="fails.col.mac"></th><th data-i18n="fails.col.category"></th>
+                            <th data-i18n="fails.col.retest"></th><th data-i18n="fails.col.station"></th>
                             <th class="num" data-i18n="fails.col.tp24"></th><th class="num" data-i18n="fails.col.tp5"></th>
                             <th class="num" data-i18n="fails.col.runs"></th><th data-i18n="fails.col.log"></th>
                         </tr></thead>

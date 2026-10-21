@@ -58,7 +58,7 @@ def _store_facts(conn, upload_id, facts, size=None):
 # ─── Step 1: receive files ───────────────────────────────────────────────────
 
 @router.post("/analyze")
-def analyze(request: Request, file: UploadFile = File(...), user=Depends(auth.current_user)):
+def analyze(request: Request, file: UploadFile = File(...), user=Depends(auth.require_uploader)):
     """One zip (plain logs, or the desktop tool's nested delivery). Expanded and scanned; nothing is written to test_record."""
     name = (file.filename or "upload.zip").replace("\\", "/").rsplit("/", 1)[-1]
     if not name.lower().endswith(".zip"):
@@ -83,7 +83,7 @@ def analyze(request: Request, file: UploadFile = File(...), user=Depends(auth.cu
 
 
 @router.post("/folder/start")
-def folder_start(request: Request, body: FolderStartBody, user=Depends(auth.current_user)):
+def folder_start(request: Request, body: FolderStartBody, user=Depends(auth.require_uploader)):
     """Begin a folder upload; the browser then sends the files in batches of ≤ UPLOAD_BATCH_MAX_FILES."""
     if body.files > config.UPLOAD_MAX_FILES:
         raise bad_request(Msg(f"資料夾超過 {config.UPLOAD_MAX_FILES:,} 個檔案上限", f"The folder exceeds the {config.UPLOAD_MAX_FILES:,}-file limit."), "too_many")
@@ -96,7 +96,7 @@ def folder_start(request: Request, body: FolderStartBody, user=Depends(auth.curr
 
 @router.post("/folder/{upload_id}/files")
 def folder_files(upload_id: str, files: list[UploadFile] = File(...), paths: list[str] = Form(default=[]),
-                 user=Depends(auth.current_user)):
+                 user=Depends(auth.require_uploader)):
     with db.db() as conn:
         row = upload.owned_upload(conn, upload_id, user, NOT_FOUND_RETRY)
         if row["status"] != "receiving":
@@ -110,7 +110,7 @@ def folder_files(upload_id: str, files: list[UploadFile] = File(...), paths: lis
 
 
 @router.post("/folder/{upload_id}/finish")
-def folder_finish(upload_id: str, user=Depends(auth.current_user)):
+def folder_finish(upload_id: str, user=Depends(auth.require_uploader)):
     with db.db() as conn:
         row = upload.owned_upload(conn, upload_id, user, NOT_FOUND_RETRY)
         if row["status"] != "receiving":
@@ -123,7 +123,7 @@ def folder_finish(upload_id: str, user=Depends(auth.current_user)):
 # ─── Step 2: validate (form) / chat (AI) ─────────────────────────────────────
 
 @router.post("/validate")
-def validate(body: ValidateBody, user=Depends(auth.current_user)):
+def validate(body: ValidateBody, user=Depends(auth.require_uploader)):
     """Rules R1–R16 for the entered product / work order / planned quantity."""
     with db.db() as conn:
         row = upload.owned_upload(conn, body.upload_id, user, NOT_FOUND_RETRY)
@@ -147,7 +147,7 @@ def _chat_extract(messages, registry):
 
 
 @router.post("/chat")
-def chat(body: ChatBody, user=Depends(auth.current_user)):
+def chat(body: ChatBody, user=Depends(auth.require_uploader)):
     """One assistant turn → NDJSON: extract, validation, delta…, done | fallback. The rules decide; the LLM phrases."""
     try:
         messages = upload_chat.normalize_messages(body.messages)
@@ -209,7 +209,7 @@ def _save_transcript(upload_id, transcript):
 # ─── Step 3: commit ──────────────────────────────────────────────────────────
 
 @router.post("/commit")
-def commit(body: CommitBody, user=Depends(auth.current_user)):
+def commit(body: CommitBody, user=Depends(auth.require_uploader)):
     """Re-validate against the current DB, then ingest in a background thread and stream progress as NDJSON.
     The ingest keeps running if the browser disconnects; the outcome is recorded in upload_log."""
     upload_id = body.upload_id
@@ -260,7 +260,7 @@ def commit(body: CommitBody, user=Depends(auth.current_user)):
 
 
 @router.post("/{upload_id}/cancel")
-def cancel(upload_id: str, user=Depends(auth.current_user)):
+def cancel(upload_id: str, user=Depends(auth.require_uploader)):
     """Stop at the next 50-file boundary; rows already written stay (revertable) and the rest are marked cancelled."""
     with db.db() as conn:
         row = upload.owned_upload(conn, upload_id, user)
@@ -279,7 +279,7 @@ HISTORY_COLUMNS = """l.id, l.created_at, l.finished_at, l.username, l.user_role,
 
 
 @router.get("/history")
-def history(limit: int = Query(20, ge=1, le=200), username: str = None, user=Depends(auth.current_user)):
+def history(limit: int = Query(20, ge=1, le=200), username: str = None, user=Depends(auth.require_uploader)):
     """Recent batches. Uploaders always get only their own; the administrator may filter by uploader."""
     if user["role"] != "admin":
         username = user["username"]
@@ -296,7 +296,7 @@ def history(limit: int = Query(20, ge=1, le=200), username: str = None, user=Dep
 
 
 @router.get("/{upload_id}")
-def detail(upload_id: str, user=Depends(auth.current_user)):
+def detail(upload_id: str, user=Depends(auth.require_uploader)):
     with db.db() as conn:
         row = upload.owned_upload(conn, upload_id, user)
         row.pop("cancel_requested", None)
@@ -304,7 +304,7 @@ def detail(upload_id: str, user=Depends(auth.current_user)):
 
 
 @router.get("/{upload_id}/items")
-def items(upload_id: str, format: str = Query("json", pattern="^(json|csv|txt)$"), user=Depends(auth.current_user)):
+def items(upload_id: str, format: str = Query("json", pattern="^(json|csv|txt)$"), user=Depends(auth.require_uploader)):
     """Per-file results, as the desktop tool's db_upload_log_<ts>.csv / .txt (Index, Filename, Status, Message)."""
     with db.db() as conn:
         row = upload.owned_upload(conn, upload_id, user)
@@ -319,7 +319,7 @@ def items(upload_id: str, format: str = Query("json", pattern="^(json|csv|txt)$"
 
 
 @router.delete("/{upload_id}")
-def revert(upload_id: str, user=Depends(auth.current_user)):
+def revert(upload_id: str, user=Depends(auth.require_uploader)):
     """Undo one web upload: delete only the rows it inserted, restore the previous plan, drop a new product left without data."""
     with db.db() as conn:
         row = upload.owned_upload(conn, upload_id, user)

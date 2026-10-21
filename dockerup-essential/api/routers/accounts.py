@@ -9,7 +9,7 @@ from services import auth, auth_utils
 
 router = APIRouter(prefix="/api/admin", tags=["accounts"])
 
-USER_FIELDS = ("username", "display_name", "department", "email", "enabled", "created_at", "created_by",
+USER_FIELDS = ("username", "display_name", "department", "email", "role", "enabled", "created_at", "created_by",
                "updated_at", "password_changed_at", "last_login_at", "last_login_ip")
 
 
@@ -53,14 +53,14 @@ def create_user(request: Request, body: UserCreate, admin=Depends(auth.require_a
         raise bad_request(error, "invalid_user")
     with db.db() as conn:
         n = db.execute(conn, """
-            INSERT INTO app_users (username, display_name, department, email, password_hash, created_by, password_changed_at)
-            VALUES (%s, %s, %s, %s, %s, %s, NOW())
+            INSERT INTO app_users (username, display_name, department, email, password_hash, created_by, password_changed_at, role)
+            VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s)
             ON CONFLICT (username) DO NOTHING
         """, (username, profile["display_name"], profile["department"], profile["email"],
-              auth_utils.hash_password(body.password), admin["username"]))
+              auth_utils.hash_password(body.password), admin["username"], body.role))
         if n == 0:
             raise bad_request(Msg(f"帳號 {username} 已存在。", f"Username {username} already exists."), "duplicate_user")
-        auth.audit(conn, request, admin["username"], "create", username, profile)
+        auth.audit(conn, request, admin["username"], "create", username, {**profile, "role": body.role})
     return {"ok": True, "username": username}
 
 
@@ -70,7 +70,7 @@ def update_user(username: str, request: Request, body: UserUpdate, admin=Depends
     username = auth_utils.normalize_username(username)
     sent = body.model_dump(exclude_unset=True)
     with db.db() as conn:
-        before = db.fetch_one(conn, "SELECT display_name, department, email, enabled FROM app_users WHERE username = %s", (username,))
+        before = db.fetch_one(conn, "SELECT display_name, department, email, enabled, role FROM app_users WHERE username = %s", (username,))
         if not before:
             raise not_found(Msg("找不到這個帳號。", "Account not found."), "no_user")
         merged = {k: sent.get(k, before[k]) for k in ("display_name", "department", "email")}
@@ -82,14 +82,18 @@ def update_user(username: str, request: Request, body: UserUpdate, admin=Depends
         if changed:
             auth.audit(conn, request, admin["username"], "update", username,
                        {"before": {k: v[0] for k, v in changed.items()}, "after": {k: v[1] for k, v in changed.items()}})
+        role = sent.get("role") or before["role"]
+        if role != before["role"]:
+            auth.audit(conn, request, admin["username"], "role", username, {"role": f"{before['role']} → {role}"})
+            auth.revoke_sessions(conn, username)          # the next sign-in carries the new role
         if enabled != before["enabled"]:
             auth.audit(conn, request, admin["username"], "enable" if enabled else "disable", username)
             if not enabled:
                 auth.revoke_sessions(conn, username)
         db.execute(conn, """
-            UPDATE app_users SET display_name = %s, department = %s, email = %s, enabled = %s, updated_at = NOW() WHERE username = %s
-        """, (profile["display_name"], profile["department"], profile["email"], enabled, username))
-    return {"ok": True, "username": username, "enabled": enabled}
+            UPDATE app_users SET display_name = %s, department = %s, email = %s, enabled = %s, role = %s, updated_at = NOW() WHERE username = %s
+        """, (profile["display_name"], profile["department"], profile["email"], enabled, role, username))
+    return {"ok": True, "username": username, "enabled": enabled, "role": role}
 
 
 @router.post("/users/{username}/reset-password")

@@ -3,6 +3,7 @@
 The X-Tweak-Token header carries a random session token (only its SHA-256 is stored).
 role 'admin'    = TWEAK_USER / TWEAK_PASS (DB maintenance, accounts, every upload batch, ingest)
 role 'uploader' = an app_users row (Log Upload: own batches only; products: may add)
+role 'rd'       = an app_users row with role rd (failure analysis; no uploads, no product changes)
 
 Routes declare what they need with FastAPI dependencies:
     user = Depends(current_user)     # any signed-in account, else 401
@@ -73,6 +74,20 @@ def current_user(token: str = Depends(token_header)):
 def require_admin(user=Depends(current_user)):
     if user["role"] != "admin":
         raise ApiError(403, Msg("此功能僅限管理者使用", "Administrators only."), "forbidden")
+    return user
+
+
+def require_uploader(user=Depends(current_user)):
+    """Log Upload and adding products: uploaders and the administrator (not RD)."""
+    if user["role"] not in ("admin", "uploader"):
+        raise ApiError(403, Msg("此帳號不能上傳 log 或新增產品。", "This account cannot upload logs or add products."), "forbidden")
+    return user
+
+
+def require_rd(user=Depends(current_user)):
+    """Failure analysis changes: RD and the administrator."""
+    if user["role"] not in ("admin", "rd"):
+        raise ApiError(403, Msg("此功能僅限 RD 與管理者使用。", "RD and the administrator only."), "forbidden")
     return user
 
 

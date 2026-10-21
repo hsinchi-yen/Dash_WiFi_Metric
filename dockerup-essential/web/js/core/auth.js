@@ -1,7 +1,8 @@
 // One sign-in for DB Maintenance, Log Upload, products and accounts.
 // POST /api/auth/login returns a random session token (sent as X-Tweak-Token). It is kept in
 // sessionStorage: a reload stays signed in, closing the tab signs out.
-// role 'admin' → everything; role 'uploader' → Log Upload (own batches) + adding products.
+// role 'admin' → everything; role 'uploader' → Log Upload (own batches) + adding products;
+// role 'rd' → failure analysis (reads everything, no uploads).
 import { apiGet, apiPost, getToken, setToken, setUnauthorizedHandler } from './api.js';
 import { t } from './i18n.js';
 import { openFormModal } from './ui.js';
@@ -13,6 +14,9 @@ let user = null;   // { username, role, display_name }
 export const currentUser = () => user;
 export const isAdmin = () => user?.role === 'admin';
 export const isSignedIn = () => !!user;
+export const isRd = () => user?.role === 'rd';
+/** Log Upload and adding products: uploaders and the administrator (RD accounts analyse, they do not upload). */
+export const canUpload = () => user?.role === 'admin' || user?.role === 'uploader';
 
 export function onAuthChange(fn) { listeners.add(fn); }
 

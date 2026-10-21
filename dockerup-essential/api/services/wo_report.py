@@ -29,7 +29,7 @@ from services.wo_rules import _clean, flag_text, numbers_ok, rule_note
 
 log = logging.getLogger("wifi.wo_report")
 
-REPORT_VERSION = 2
+REPORT_VERSION = 3
 TIMEOUT_SEC = 180
 RETRY_SEC = 600
 SCAN_EVERY_SEC = 30
@@ -69,8 +69,10 @@ SYSTEM = (
     "product when `previous` is given.\n"
     "- anomalies: one item per bad or warn flag (flag_sentences describe them), plus each change in changes_vs_previous "
     "marked notable=true. Changes that are not notable are not anomalies. Empty when there are none.\n"
-    "- causes: possible causes based on fail_reasons and the flags, always phrased as possibilities (zh: 可能…; en: may / "
-    "possibly). Empty when there are no anomalies.\n"
+    "- causes: possible causes based on fail_runs_by_category (passed_on_retest = the unit passed when retested, i.e. "
+    "likely transient or station related; failed_again / not_retested = persistent), fail_stations (failures concentrated "
+    "on one station point to the station) and the flags, always phrased as possibilities (zh: 可能…; en: may / possibly). "
+    "Empty when there are no anomalies.\n"
     "- actions: concrete next checks; suggested_actions are good starting points. Empty when nothing needs doing.\n"
     "- A normal work order (no bad or warn flag and no notable change) gets a short summary and empty lists.\n"
     "- Words: zh 良率 (yield), 重測率 (retry rate), 每小時產出 / 台／時 (units per hour, never 'UPH'), 吞吐量 (throughput), "
@@ -113,7 +115,12 @@ def _build_facts(key: tuple) -> tuple[dict, str]:
         "avg_24g": ex["avg_24g"], "avg_5g": ex["avg_5g"], "p50_24g": st.get("p50_24g"), "p50_5g": st.get("p50_5g"),
         "usual_p50_24g": st.get("hist_p50_24g"), "usual_p50_5g": st.get("hist_p50_5g"),
         "uph": st.get("uph"), "uph_target": st.get("uph_target"), "max_fail_streak": st.get("max_fail_streak"),
-        "fail_reasons": ex["fail_reasons"],
+        "failing_units_by_category": [{"category": r["name_en"] or r["code"], "units": r["units"]} for r in ex["fail_reasons"]],
+        "fail_runs_by_category": [{"category": c["name_en"] or c["category"], "fail_runs": c["runs"], "units": c["units"],
+                                   "passed_on_retest": c["pass_on_retest"], "failed_again": c["failed_again"],
+                                   "not_retested": c["not_retested"]} for c in ex["fail_runs"]["categories"]],
+        "fail_stations": [{"ssid_group": s["ssid_group"], "port": s["station_port"], "fail_runs": s["runs"]}
+                          for s in ex["fail_runs"]["stations"][:3]],
         "flags": [{"code": x["code"], "level": x["level"], **x["values"]} for x in st.get("flags", [])],
         "previous": None, "changes_vs_previous": None,
     }

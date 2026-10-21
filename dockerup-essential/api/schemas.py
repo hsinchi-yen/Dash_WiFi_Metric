@@ -12,10 +12,13 @@ class LoginBody(BaseModel):
     password: str = Field("", max_length=256)
 
 
+Role = Literal["admin", "uploader", "rd"]
+
+
 class LoginResult(BaseModel):
     ok: bool = True
     token: str
-    role: Literal["admin", "uploader"]
+    role: Role
     username: str
     display_name: Optional[str] = None
     expires_at: datetime
@@ -23,7 +26,7 @@ class LoginResult(BaseModel):
 
 class Identity(BaseModel):
     username: str
-    role: Literal["admin", "uploader"]
+    role: Role
     display_name: Optional[str] = None
     expires_at: datetime
 
@@ -39,6 +42,7 @@ class UserCreate(BaseModel):
     department: Optional[str] = Field(None, max_length=100)
     email: Optional[str] = Field(None, max_length=200)
     password: str = Field("", max_length=256)
+    role: Literal["uploader", "rd"] = "uploader"      # rd: reads every analysis, classifies failures; cannot upload
 
 
 class UserUpdate(BaseModel):
@@ -46,6 +50,7 @@ class UserUpdate(BaseModel):
     department: Optional[str] = Field(None, max_length=100)
     email: Optional[str] = Field(None, max_length=200)
     enabled: Optional[bool] = None
+    role: Optional[Literal["uploader", "rd"]] = None
 
 
 class PasswordBody(BaseModel):

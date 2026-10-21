@@ -9,7 +9,7 @@ import logging
 import threading
 
 import config
-from services import reports, stats, wo_notes, wo_report
+from services import fail_classify, reports, stats, wo_notes, wo_report
 
 log = logging.getLogger("wifi.scheduler")
 
@@ -23,6 +23,10 @@ def _maintenance():
             stats.refresh_if_due()
         except Exception:
             log.exception("stats refresh failed")
+        try:
+            fail_classify.scan_if_due()          # classify new FAIL runs (rules), refresh retest outcomes
+        except Exception:
+            log.exception("fail classification failed")
 
 
 def _report_worker():
@@ -31,6 +35,8 @@ def _report_worker():
         ticks += 1
         try:
             if wo_notes.process_once():        # one-line notes first: short, and the Work Orders page shows them
+                continue
+            if fail_classify.llm_once():       # a FAIL run no rule recognised
                 continue
             if reports.process_queue_once():
                 continue

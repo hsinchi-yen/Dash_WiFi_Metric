@@ -46,7 +46,7 @@ async function loadUsers() {
             ${cell(a.last_upload_at ? fmtDateTime(a.last_upload_at) : '', 'nowrap')}${cell(a.last_login_at ? fmtDateTime(a.last_login_at) : '', 'nowrap')}
             <td class="nowrap"><button class="btn small" type="button" data-op="history" data-user="${esc(a.username)}">${esc(t('acct.history'))}</button></td></tr>`;
         const rows = data.items.map(u => `<tr>
-            ${cell(u.username)}${cell(u.display_name)}${cell(u.department)}${cell(u.email)}
+            <td>${esc(u.username)}${u.role === 'rd' ? ` <span class="badge muted">${esc(t('acct.role.rd'))}</span>` : ''}</td>${cell(u.display_name)}${cell(u.department)}${cell(u.email)}
             <td><span class="badge ${u.enabled ? 'good' : 'muted'}">${esc(u.enabled ? t('acct.stateOn') : t('acct.stateOff'))}</span></td>
             ${cell(fmtInt(u.uploads), 'num')}${cell(fmtInt(u.uploaded_rows), 'num')}${cell(fmtInt(u.reverted_batches), 'num')}
             ${cell(u.last_upload_at ? fmtDateTime(u.last_upload_at) : '', 'nowrap')}${cell(u.last_login_at ? fmtDateTime(u.last_login_at) : '', 'nowrap')}
@@ -130,6 +130,8 @@ function loadTab() {
     return loadUsers();
 }
 
+const roleOptions = () => [{ value: 'uploader', label: t('acct.role.uploader') }, { value: 'rd', label: t('acct.role.rd') }];
+
 function newUser() {
     openFormModal({
         title: t('acct.newTitle'), desc: t('acct.newDesc'),
@@ -138,6 +140,7 @@ function newUser() {
             { name: 'display_name', label: t('acct.f.name'), required: true, maxlength: 50 },
             { name: 'department', label: t('acct.f.dept'), maxlength: 50 },
             { name: 'email', label: t('acct.f.email'), type: 'email', maxlength: 120 },
+            { name: 'role', label: t('acct.f.role'), type: 'select', value: 'uploader', options: roleOptions(), hint: t('acct.f.roleHint') },
             { name: 'password', label: t('acct.f.pw'), type: 'password', required: true, autocomplete: 'new-password', hint: t('acct.f.pwHint') },
             { name: 'password2', label: t('acct.f.pw2'), type: 'password', required: true, autocomplete: 'new-password' },
         ],
@@ -145,7 +148,7 @@ function newUser() {
         onSubmit: async v => {
             if (v.password !== v.password2) return t('acct.pwMismatch');
             try {
-                await apiPost('/api/admin/users', { username: v.username, display_name: v.display_name, department: v.department, email: v.email, password: v.password });
+                await apiPost('/api/admin/users', { username: v.username, display_name: v.display_name, department: v.department, email: v.email, role: v.role, password: v.password });
             } catch (err) { return err.message; }
             loadUsers();
             return null;
@@ -170,6 +173,7 @@ async function onUserAction(e) {
                 { name: 'display_name', label: t('acct.f.name'), required: true, value: user.display_name, maxlength: 50 },
                 { name: 'department', label: t('acct.f.dept'), value: user.department, maxlength: 50 },
                 { name: 'email', label: t('acct.f.email'), type: 'email', value: user.email, maxlength: 120 },
+                { name: 'role', label: t('acct.f.role'), type: 'select', value: user.role || 'uploader', options: roleOptions(), hint: t('acct.f.roleChangeHint') },
             ],
             submitLabel: t('common.save'),
             onSubmit: async v => {

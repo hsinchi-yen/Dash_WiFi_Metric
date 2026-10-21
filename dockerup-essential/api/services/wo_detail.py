@@ -8,7 +8,7 @@ the previous work order of the same product (or any other work order). Read only
 from typing import Any, Optional
 
 import db
-from services import analytics, settings, wo_status
+from services import analytics, fail_classify, settings, wo_status
 from services.filters import UNIT, resolve_range_window
 from services.stats import FAIL_REASON_SQL, RETRY_FILTER_SQL
 from services.wo_rules import parse_dt
@@ -38,10 +38,13 @@ def extra(key: tuple) -> dict[str, Any]:
         FROM {UNIT} WHERE work_order = %s AND {pm_sql}
     """, (wo, *params))[0]
     runs = db.rows(f"SELECT COUNT(*) AS n FROM test_record WHERE work_order = %s AND {pm_sql}", (wo, *params))[0]["n"]
+    # Units still failing, by their 5F category (the coarse rule reason until a run is classified)
     reasons = db.rows(f"""
-        SELECT {FAIL_REASON_SQL} AS reason, COUNT(*) AS units
-        FROM {UNIT} WHERE work_order = %s AND {pm_sql} AND result = FALSE
-        GROUP BY 1 ORDER BY 2 DESC, 1
+        SELECT COALESCE(f.category, {FAIL_REASON_SQL}) AS code,      -- band_result_* / bt_result / avg_* exist only in mv_unit
+               t.name_zh, t.name_en, COUNT(*) AS units
+        FROM {UNIT} u LEFT JOIN fail_analysis f ON f.record_id = u.id LEFT JOIN fail_taxonomy t ON t.code = f.category
+        WHERE u.work_order = %s AND u.{pm_sql} AND u.result = FALSE
+        GROUP BY 1, 2, 3 ORDER BY 4 DESC, 1
     """, (wo, *params))
     return {
         "retry_units": int(row["retry_units"] or 0),
@@ -49,7 +52,8 @@ def extra(key: tuple) -> dict[str, Any]:
         "avg_5g": None if row["avg_5g"] is None else round(float(row["avg_5g"]), 1),
         "active_hours": int(row["active_hours"] or 0),
         "test_runs": int(runs or 0),
-        "fail_reasons": [{"reason": r["reason"], "units": int(r["units"])} for r in reasons],
+        "fail_reasons": [{"code": r["code"], "name_zh": r["name_zh"], "name_en": r["name_en"], "units": int(r["units"])} for r in reasons],
+        "fail_runs": fail_classify.summary(wo, product),
     }
 
 

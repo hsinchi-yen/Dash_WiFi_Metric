@@ -73,3 +73,4 @@ STATS_REFRESH_LOCK_KEY = 7361002
 REPORT_WORKER_LOCK_KEY = 7361003   # one report generation at a time across workers
 UPLOAD_LOCK_KEY = 7361004          # one web upload commit at a time
 SETTINGS_LOCK_KEY = 7361005        # one settings save at a time (read-compare-write)
+FAIL_SCAN_LOCK_KEY = 7361006       # one FAIL classification scan at a time across workers

@@ -37,7 +37,7 @@ def resolve(body: ProductResolveBody, _user=Depends(auth.current_user)):
 
 
 @router.post("")
-def create(request: Request, body: ProductCreateBody, user=Depends(auth.current_user)):
+def create(request: Request, body: ProductCreateBody, user=Depends(auth.require_uploader)):
     with db.db() as conn:
         result = products.load(conn).resolve(body.name)
         if result["status"] == "known":
