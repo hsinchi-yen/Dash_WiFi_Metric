@@ -24,6 +24,7 @@
 #
 # Options: --dir <remote project dir> (default /mnt/md127/WIFI_YFP_DashBoard), --skip-compat, --skip-tests, --yes
 # Credentials: SSH keys, or SSHPASS in the environment (used with `sshpass -e`); nothing is ever written to a file.
+# SSH_OPTS in the environment adds ssh options (e.g. -o UserKnownHostsFile=<file>).
 # Only committed code is deployed (HEAD); uncommitted changes are listed and left out.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -60,8 +61,9 @@ case $MODE in
         BASE="http://127.0.0.1:8000"
         COMPOSE="cd '$DIR/dockerup-essential' && docker compose" ;;
     remote)
-        SSH=(ssh -o StrictHostKeyChecking=accept-new "$HOST")
-        RSYNC_SSH="ssh -o StrictHostKeyChecking=accept-new"
+        # SSH_OPTS: extra ssh options, e.g. "-o UserKnownHostsFile=<file>" to leave ~/.ssh alone
+        SSH=(ssh -o StrictHostKeyChecking=accept-new ${SSH_OPTS:-} "$HOST")
+        RSYNC_SSH="ssh -o StrictHostKeyChecking=accept-new ${SSH_OPTS:-}"
         if [ -n "${SSHPASS:-}" ]; then SSH=(sshpass -e "${SSH[@]}"); RSYNC_SSH="sshpass -e $RSYNC_SSH"; fi
         run() { "${SSH[@]}" "$*"; }
         DEST="$HOST:"; RS=(rsync -az -e "$RSYNC_SSH")
