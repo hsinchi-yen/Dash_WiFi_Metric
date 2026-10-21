@@ -11,6 +11,12 @@ desktop rows stay NULL). Everything else new lives in separate objects:
   product_registry  the product names the dashboard accepts
   wo_plan           planned test quantity per work order
   upload_log / upload_log_item                           web uploads and their per-file results
+
+Old-database compatibility (tests/db_compat.sh must print COMPATIBLE before a deployment):
+  - never alter, drop or constrain test_record or the old views v_yield_by_wo / v_unstable_units /
+    v_fail_detail (upload_id is the one verified exception);
+  - no foreign key to test_record and no trigger on it (the old DB Tweak deletes rows directly);
+  - every new object is also dropped by dockerup-docs/02_Maintenance/scripts/rollback_web_additions.sql.
 """
 import logging
 from datetime import datetime, timezone

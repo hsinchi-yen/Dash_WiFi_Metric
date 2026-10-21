@@ -47,3 +47,12 @@ node_modules/
 # ── Legacy scripts with embedded credentials (kept on disk, out of git) ───
 tools/
 tests/golden/
+
+# ── Mount points Docker creates inside api/ for docker-compose.dev.yml ────
+# (empty, root-owned; the real files are dockerup-essential/log_parser.py and wifi_dashboard.html)
+dockerup-essential/api/log_parser.py
+dockerup-essential/api/wifi_dashboard.html
+dockerup-essential/api/logs/
+dockerup-essential/api/WiFiTestLogs/
+dockerup-essential/api/runtime-logs/
+dockerup-essential/api/uploads/

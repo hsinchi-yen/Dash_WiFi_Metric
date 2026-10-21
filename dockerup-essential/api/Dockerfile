@@ -9,7 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev gcc &
 COPY api/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-COPY log_parser.py wifi_dashboard.html /app/
 COPY api/ /app/
+# After api/: the shared parser and the single-file dashboard must win over anything in api/
+# (docker-compose.dev.yml leaves empty mount points with these names there).
+COPY log_parser.py wifi_dashboard.html /app/
 
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

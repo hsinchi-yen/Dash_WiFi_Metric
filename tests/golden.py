@@ -10,12 +10,14 @@ order-insensitively where the original ORDER BY had ties (same rows, possibly di
 tie order), and exactly otherwise.
 """
 import json
+import os
 import sys
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
-GOLDEN_DIR = Path(__file__).resolve().parent / "golden"
+# GOLDEN_DIR=… records / compares somewhere else (tests/db_compat.sh compares two old-API runs).
+GOLDEN_DIR = Path(os.environ.get("GOLDEN_DIR") or Path(__file__).resolve().parent / "golden")
 WO = "5101-251216015"
 PM = "TN-99_EDM1-IMX6P"
 PM2 = "TN-86_PICO-IMX7"

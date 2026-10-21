@@ -10,3 +10,10 @@ __pycache__
 .env
 .env.*
 *.spec
+# Mount points docker-compose.dev.yml leaves inside api/ (empty files would shadow the real ones)
+api/log_parser.py
+api/wifi_dashboard.html
+api/logs
+api/WiFiTestLogs
+api/runtime-logs
+api/uploads
