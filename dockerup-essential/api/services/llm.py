@@ -1,4 +1,7 @@
-"""The local LLM (llama.cpp behind an OpenAI-compatible API): status probe and chat."""
+"""The local LLM (llama.cpp behind an OpenAI-compatible API): status probe and chat.
+
+Every completion is logged in llm_usage (purpose, success, duration) so the call rate can be watched
+(GET /api/llm-usage, Settings page). The status probe (/models) is not a completion and is not logged."""
 import json
 import logging
 import threading
@@ -55,6 +58,16 @@ def _request(payload: dict, stream: bool = False, timeout: Optional[int] = None)
     return urllib.request.urlopen(req, timeout=timeout or config.LLM_CHAT_TIMEOUT)
 
 
+def _log(purpose: str, ok: bool, t0: float) -> None:
+    try:
+        import db
+        with db.db() as conn:
+            db.execute(conn, "INSERT INTO llm_usage (purpose, ok, ms) VALUES (%s, %s, %s)",
+                       (purpose[:40], ok, int((time.perf_counter() - t0) * 1000)))
+    except Exception:   # the log must never break a call
+        log.debug("llm usage log failed", exc_info=True)
+
+
 def _ok():
     with _lock:
         _state["connected"] = True
@@ -68,31 +81,36 @@ def _failed(exc):
         _state["error"] = str(exc)[:200]
 
 
-def chat(messages: list[dict], timeout: int = config.LLM_SUMMARY_TIMEOUT, max_tokens: Optional[int] = None, **options) -> str:
+def chat(messages: list[dict], timeout: int = config.LLM_SUMMARY_TIMEOUT, max_tokens: Optional[int] = None,
+         purpose: str = "chat", **options) -> str:
     """One chat completion; returns the assistant text. Raises on transport/HTTP errors.
     Thinking follows LLM_ENABLE_THINKING (off by default: ~3× faster for the same answer)."""
     payload = {"messages": messages, **options}
     if max_tokens:
         payload["max_tokens"] = max_tokens
+    t0 = time.perf_counter()
     try:
         with _request(payload, timeout=timeout) as response:
             data = json.loads(response.read().decode("utf-8"))
     except Exception as exc:
         _failed(exc)
+        _log(purpose, False, t0)
         raise
     _ok()
+    _log(purpose, True, t0)
     return data["choices"][0]["message"]["content"]
 
 
 def complete_json(messages: list[dict], schema: dict, name: str = "result", timeout: Optional[int] = None, **params) -> dict:
     """Structured output via response_format json_schema → parsed dict."""
-    content = chat(messages, timeout=timeout or config.LLM_CHAT_TIMEOUT,
+    content = chat(messages, timeout=timeout or config.LLM_CHAT_TIMEOUT, purpose=name,
                    response_format={"type": "json_schema", "json_schema": {"name": name, "schema": schema}}, **params)
     return json.loads(content)
 
 
-def stream_text(messages: list[dict], timeout: Optional[int] = None, **params):
+def stream_text(messages: list[dict], timeout: Optional[int] = None, purpose: str = "stream", **params):
     """Yield content deltas from an SSE stream."""
+    t0 = time.perf_counter()
     try:
         with _request({"messages": messages, **params}, stream=True, timeout=timeout) as resp:
             for raw in resp:
@@ -107,8 +125,11 @@ def stream_text(messages: list[dict], timeout: Optional[int] = None, **params):
                 if delta:
                     yield delta
         _ok()
+        _log(purpose, True, t0)
     except GeneratorExit:
+        _log(purpose, True, t0)
         raise
     except Exception as exc:
         _failed(exc)
+        _log(purpose, False, t0)
         raise

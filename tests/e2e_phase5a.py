@@ -67,7 +67,7 @@ with sync_playwright() as p:
     check("basic columns: 10 (compare, status, work order, product, tested / plan, yield, FAIL, note, last test, report)", len(heads) == 10, heads)
     note = page.locator("#woRows tr.light-bad .wo-note").first
     check("a red row's note names its problem", "94.87" in note.inner_text() or "row" in note.inner_text(), note.inner_text())
-    check("AI-worded notes carry the AI tag", page.locator("#woRows .ai-tag").count() >= 70, page.locator("#woRows .ai-tag").count())
+    check("AI-worded notes (red / amber work orders only) carry the AI tag", page.locator("#woRows .ai-tag").count() == 7, page.locator("#woRows .ai-tag").count())
     title = page.locator("#woRows tr.light-bad .wo-state").first.get_attribute("title")
     check("the status pill's tooltip lists the checks", title.startswith("Checks:"), title)
     shot("30_workorders_basic_en")

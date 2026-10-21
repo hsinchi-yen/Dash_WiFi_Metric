@@ -179,7 +179,7 @@ def chat(body: ChatBody, user=Depends(auth.require_uploader)):
         parts = []
         try:
             for text in llm.stream_text(upload_chat.build_reply_messages(facts, resolved, issues, extracted, messages, lang),
-                                        temperature=0.3, max_tokens=upload_chat.REPLY_MAX_TOKENS):
+                                        temperature=0.3, max_tokens=upload_chat.REPLY_MAX_TOKENS, purpose="upload_reply"):
                 parts.append(text)
                 yield upload.ndjson({"type": "delta", "text": text})
         except Exception:

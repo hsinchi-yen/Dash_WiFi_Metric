@@ -105,7 +105,7 @@ def evaluate(f: dict[str, Any], s: dict[str, Any], now: datetime) -> dict[str, A
 
 # ─── One-line note ───────────────────────────────────────────────────────────
 
-NOTE_VERSION = 2          # bump when the note wording rules change: every note is rewritten once
+NOTE_VERSION = 3          # bump when the note wording rules change: every note is rewritten once
 NOTE_KEYS = ("state", "light", "total", "passed", "failed", "yield_pct", "planned", "achieved_pct",
              "uph", "uph_target", "max_fail_streak", "p50_24g", "p50_5g", "hist_p50_24g", "hist_p50_5g", "thresholds")
 

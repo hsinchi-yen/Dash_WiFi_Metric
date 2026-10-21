@@ -2,7 +2,7 @@
 // product. GET /api/settings → form; Save sends only what changed (PUT, audited on the server).
 import { apiGet, request } from '../core/api.js';
 import * as auth from '../core/auth.js';
-import { esc, fmtNum, setThresholds } from '../core/format.js';
+import { esc, fmtInt, fmtNum, setThresholds } from '../core/format.js';
 import { t } from '../core/i18n.js';
 import { $, $$, toast } from '../core/ui.js';
 
@@ -108,12 +108,29 @@ async function save(e) {
     }
 }
 
+const PURPOSES = ['wo_note', 'wo_report', 'wo_answer', 'fail_category', 'upload_fields', 'upload_reply', 'old_report'];
+const purposeName = p => (PURPOSES.includes(p) ? t(`set.llm.p.${p}`) : t('set.llm.p.other'));
+
+async function loadUsage() {
+    const tbody = $('#setLlmRows');
+    try {
+        const u = await apiGet('/api/llm-usage?days=7');
+        $('#setLlmNote').textContent = t('set.llmLast24', { n: fmtInt(u.last_24h_total) });
+        tbody.innerHTML = u.days.length ? u.days.map(r => `<tr><td class="nowrap">${esc(r.day)}</td><td>${esc(purposeName(r.purpose))}</td>
+            <td class="num">${fmtInt(r.calls)}</td><td class="num ${r.failed ? 'bad-text' : 'muted'}">${fmtInt(r.failed)}</td>
+            <td class="num">${fmtInt(r.avg_ms)}</td></tr>`).join('') : `<tr><td colspan="5" class="muted">${esc(t('set.llmNone'))}</td></tr>`;
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" class="bad-text">${esc(err.message)}</td></tr>`;
+    }
+}
+
 async function loadSettings() {
     try {
         st.data = await apiGet('/api/settings');
         fillForm(st.data.settings);
         renderUph();
         $('#setMsg').textContent = '';
+        loadUsage();
     } catch (err) {
         $('#setMsg').textContent = t('common.loadFailedMsg', { error: err.message });
     }

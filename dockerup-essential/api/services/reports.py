@@ -107,7 +107,8 @@ def get(work_order: str, product_model: Optional[str], lang: str) -> dict[str, A
         return {"work_order": work_order, "product_model": product or None, "lang": lang, "status": "no_data",
                 "generating": False, "stale": False, "text": None, "generated_at": None, "model": None, "elapsed_sec": None, "error": None}
     with db.db() as conn:
-        return _state(conn, work_order, product, lang, digest, auto_queue=True, priority=PRIORITY_OPEN)
+        # No automatic generation any more (LLM usage): the five-section report is replaced by the final report (5B).
+        return _state(conn, work_order, product, lang, digest, auto_queue=False, priority=PRIORITY_OPEN)
 
 
 def request(work_order: str, product_model: Optional[str], lang: str) -> dict[str, Any]:
@@ -141,7 +142,7 @@ def _generate(cur, row) -> None:
                                       thresholds=(th["yield_good"], th["yield_warn"]))
     t0 = time.perf_counter()
     try:
-        text = llm.chat(messages, timeout=config.LLM_SUMMARY_TIMEOUT, max_tokens=config.LLM_REPORT_MAX_TOKENS).strip()
+        text = llm.chat(messages, timeout=config.LLM_SUMMARY_TIMEOUT, max_tokens=config.LLM_REPORT_MAX_TOKENS, purpose="old_report").strip()
     except Exception as exc:
         log.warning("report %s/%s failed: %s", work_order, lang, exc)
         cur.execute("UPDATE ai_reports SET status = 'failed', error = %s, finished_at = NOW(), elapsed_sec = %s WHERE id = %s",

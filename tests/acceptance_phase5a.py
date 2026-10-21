@@ -131,7 +131,10 @@ while time.time() < end and call("GET", "/api/wo-notes/queue")[1]["due"]:
 queue = call("GET", "/api/wo-notes/queue")[1]
 check("notes stored for every work order", queue["stored"] >= 77 and queue["due"] == 0, queue)
 llm_notes = [x for x in items if x["note"]["source"] == "llm" and not x["note"]["pending"]]
-check("notes are AI-worded (LLM online)", len(llm_notes) >= 70, f"{len(llm_notes)} AI notes")
+flagged_wos = [x for x in items if any(f["level"] in ("bad", "warn") for f in x["flags"])]
+check("AI-worded notes only where a red / amber flag needs explaining; normal work orders use the rule sentence (LLM usage)",
+      {x["work_order"] for x in llm_notes} == {x["work_order"] for x in flagged_wos}
+      and all(x["note"]["source"] == "rule" for x in items if x not in flagged_wos), f"{len(llm_notes)} AI notes, {len(flagged_wos)} flagged")
 bad_numbers = []
 for x in llm_notes:
     facts, _ = wo_rules.note_facts(x)

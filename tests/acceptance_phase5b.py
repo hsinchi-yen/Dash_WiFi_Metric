@@ -150,7 +150,8 @@ for key in (NORMAL, RED):
     if r["state"] != "ready":
         call("POST", "/api/wo-report/generate", {"work_order": key[0], "product_model": key[1]})
     r = wait_ready(key)
-    check(f"{key[0]}: report ready, written by the AI", r["state"] == "ready" and r["source"] == "llm", (r["state"], r["source"], r["error"]))
+    want = "llm" if key == RED else ("llm", "rule")     # a normal work order's automatic report uses the rules (LLM usage)
+    check(f"{key[0]}: report ready ({'AI' if key == RED else 'AI or rules'})", r["state"] == "ready" and r["source"] in want, (r["state"], r["source"], r["error"]))
     bad = []
     for lang in ("zh", "en"):
         part = r["report"][lang]
@@ -173,6 +174,10 @@ for key in (NORMAL, RED):
         check("causes are phrased as possibilities", all("可能" in x for x in part["causes"]) and
               all(any(w in x.lower() for w in ("may", "possibl", "could", "might")) for x in r["report"]["en"]["causes"]),
               part["causes"])
+call("POST", "/api/wo-report/generate", {"work_order": NORMAL[0], "product_model": NORMAL[1]})
+time.sleep(5)
+r2 = wait_ready(NORMAL)
+check("asking for a report on a normal work order gets an AI-written one", r2["source"] == "llm", r2["source"])
 check("facts table carries the thresholds, the failure categories (5F) and the previous work order",
       r["facts"]["thresholds"]["yield_good"] == 98 and r["facts"]["fail_runs_by_category"] and r["facts"]["failing_units_by_category"]
       and "previous" in r["facts"])

@@ -1696,10 +1696,8 @@
           <div class="nav-item" onclick="showPage('dbtweak',this)">
             <span style="margin-right:6px; font-size:16px;">🔧</span> Database Tweak
           </div>
-          <div class="nav-item" id="nav-ai-report" onclick="openLatestWoTerminalReport()"
-            title="Generate terminal AI report for the latest work order">
-            <span style="margin-right:6px; font-size:16px;">⬛</span> AI Report — Latest WO
-          </div>
+          <!-- "AI Report — Latest WO" (terminal carousel) removed 2026-10-21: it called the LLM on every run.
+               The structured final report of a work order lives on the new dashboard's work-order page. -->
         </div>
       </nav>
       <div class="sidebar-footer">
@@ -2863,16 +2861,10 @@
       return d >= 1 && d <= 5 && h >= 8 && h < 19;
     }
 
+    // The AI report step of this carousel was removed on 2026-10-21 (two LLM calls every 10 minutes per open
+    // page); the carousel now only rotates the pages.
     function startScheduledCarousel() {
       if (_schedCarouselInterval) return; // already running
-      carouselAiCacheEN    = null;
-      carouselAiCacheZH    = null;
-      carouselAiFetchingEN = false;
-      carouselAiFetchingZH = false;
-      
-      prefetchCarouselAiReport('en'); // kick off background fetch immediately
-      prefetchCarouselAiReport('zh');
-
       _schedCarouselIdx = 0;
       showPage(SCHEDULED_CAROUSEL_PAGES[0]);
 
@@ -2881,18 +2873,9 @@
         if (_schedCarouselIdx < SCHEDULED_CAROUSEL_PAGES.length) {
           showPage(SCHEDULED_CAROUSEL_PAGES[_schedCarouselIdx]);
         } else {
-          // AI Report step — stop interval, hand off to terminal
+          // End of the sequence (no AI report step any more)
           clearInterval(_schedCarouselInterval); _schedCarouselInterval = null;
-          // Show English first
-          showCarouselAiReport('en', () => {
-            // After EN terminal closes (which auto-closes after 30s), wait a moment then show ZH
-            setTimeout(() => {
-              showCarouselAiReport('zh', () => {
-                // After ZH terminal closes (auto-closes after 30s), scheduled sequence is done
-                _schedCarouselIdx = 0;
-              });
-            }, 500); // short delay between EN closing and ZH opening
-          });
+          _schedCarouselIdx = 0;
         }
       }, SCHEDULED_CAROUSEL_INTERVAL_MS);
     }

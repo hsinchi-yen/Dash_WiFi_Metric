@@ -1,5 +1,8 @@
 """L3: the structured final report of a work order (5B), stored in wo_report.
 
+Automatic reports use the LLM only for a work order with a red / amber flag or a notable change; a normal one
+gets the rule summary. A report someone asks for (Write / Rewrite) is always AI-written.
+
 The facts table is built by the server and shown as it is. The LLM writes only four parts, in Chinese and
 English in one call (Q24): summary, anomalies, possible causes, actions. Every sentence must use only
 numbers from the facts (Q26): a list item that does not is dropped, a summary that does not is replaced
@@ -138,6 +141,24 @@ def _status(key):
     return wo_status.statuses()[key]
 
 
+def needs_llm(key: tuple, f: dict) -> bool:
+    """An automatic report is AI-written only when there is something to explain: a red or amber flag or a
+    notable change from the previous work order. A normal work order gets the rule summary (LLM usage)."""
+    st = _status(key)
+    notable = any(c.get("notable") for c in (f.get("changes_vs_previous") or {}).values())
+    return notable or any(x["level"] in ("bad", "warn") for x in st.get("flags", []))
+
+
+def _previous_sentence(f: dict, lang: str) -> str:
+    p = f.get("previous")
+    if not p:
+        return ""
+    y = p.get("yield_pct")
+    if lang == "zh":
+        return f"上一張同產品工單 {p['work_order']}：良率 {y}%，{p['total']:,} 台。"
+    return f"Previous work order of this product, {p['work_order']}: yield {y}%, {p['total']:,} units."
+
+
 def rule_report(key: tuple, f: dict) -> dict:
     st = _status(key)
     out = {}
@@ -148,8 +169,10 @@ def rule_report(key: tuple, f: dict) -> dict:
             text = SUGGESTED_ACTIONS.get(x["code"], (None, None))[i]
             if text and text not in actions:
                 actions.append(text)
-        out[lang] = {"summary": rule_note(st, lang), "anomalies": [flag_text(x, lang) for x in main],
-                     "causes": [], "actions": actions}
+        summary = rule_note(st, lang)
+        prev = _previous_sentence(f, lang)
+        out[lang] = {"summary": f"{summary} {prev}".strip() if lang == "en" else summary + prev,
+                     "anomalies": [flag_text(x, lang) for x in main], "causes": [], "actions": actions}
     return out
 
 
@@ -179,10 +202,12 @@ def _check(report: dict, f: dict) -> tuple[dict, list]:
     return clean, rejected
 
 
-def generate(key: tuple) -> dict:
+def generate(key: tuple, use_llm: bool = True) -> dict:
     f, digest = facts(key)
     rule = rule_report(key, f)
     base = {"hash": digest, "facts": f, "model": None, "elapsed": 0.0}
+    if not use_llm:                      # automatic report of a normal work order: rules only
+        return {**base, "report": rule, "source": "rule", "error": None, "rejected": None}
     if not llm.status()["connected"]:
         return {**base, "report": rule, "source": "rule", "error": "llm_offline", "rejected": None}
     st = _status(key)
@@ -283,7 +308,7 @@ def _due(conn) -> list:
             if row["source"] == "llm" or (row["created_at"] and now - row["created_at"].timestamp() < RETRY_SEC):
                 continue
         auto.append((-(st["last_test"].timestamp() if st.get("last_test") else 0), key))
-    return [k for _, k in sorted(requested)] + [k for _, k in sorted(auto)]
+    return [(k, True) for _, k in sorted(requested)] + [(k, None) for _, k in sorted(auto)]
 
 
 def process_once() -> bool:
@@ -298,9 +323,13 @@ def process_once() -> bool:
             return False
         try:
             due = _due(conn)
+            plain = [k for k, asked in due if not asked and not needs_llm(k, facts(k)[0])]
+            for k in plain:                         # normal work orders: rule reports, no LLM, all at once
+                store(conn, k, generate(k, use_llm=False))
+            due = [k for k, asked in due if asked or k not in plain]
             _scan.update(at=time.time(), pending=len(due) > 1)
             if not due:
-                return False
+                return bool(plain)
             key = due[0]
             out = generate(key)
             store(conn, key, out)

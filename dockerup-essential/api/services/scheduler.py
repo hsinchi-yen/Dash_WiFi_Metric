@@ -17,8 +17,21 @@ _stop = threading.Event()
 _threads: list[threading.Thread] = []
 
 
+def _prune_llm_usage():
+    import db
+    with db.db() as conn:
+        db.execute(conn, "DELETE FROM llm_usage WHERE at < NOW() - INTERVAL '90 days'")
+
+
 def _maintenance():
+    ticks = 0
     while not _stop.wait(15):
+        ticks += 1
+        if ticks % 240 == 1:                      # hourly
+            try:
+                _prune_llm_usage()
+            except Exception:
+                log.exception("llm usage prune failed")
         try:
             stats.refresh_if_due()
         except Exception:

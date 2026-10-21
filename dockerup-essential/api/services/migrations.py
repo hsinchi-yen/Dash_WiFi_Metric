@@ -14,6 +14,7 @@ desktop rows stay NULL). Everything else new lives in separate objects:
   wo_status_note    L1 one-line status note per work order (settings live in app_meta "settings")
   wo_report         L3 structured final report per work order
   fail_taxonomy / fail_analysis                          5F failure categories and one classification per FAIL run
+  llm_usage         one row per LLM completion (kept 90 days)
 
 Old-database compatibility (tests/db_compat.sh must print COMPATIBLE before a deployment):
   - never alter, drop or constrain test_record or the old views v_yield_by_wo / v_unstable_units /
@@ -296,6 +297,15 @@ TABLES = (
     "CREATE INDEX IF NOT EXISTS fail_analysis_wo_idx ON fail_analysis (work_order, product_model)",
     "CREATE INDEX IF NOT EXISTS fail_analysis_time_idx ON fail_analysis (test_time)",
     "CREATE INDEX IF NOT EXISTS fail_analysis_station_idx ON fail_analysis (ssid_group, station_port)",
+    # every LLM completion (purpose, success, duration): the call rate on the Settings page
+    """CREATE TABLE IF NOT EXISTS llm_usage (
+        id      BIGSERIAL PRIMARY KEY,
+        at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        purpose TEXT,
+        ok      BOOLEAN,
+        ms      INT
+    )""",
+    "CREATE INDEX IF NOT EXISTS llm_usage_at_idx ON llm_usage (at)",
 )
 
 # Columns added later to this project's own tables (never to test_record).

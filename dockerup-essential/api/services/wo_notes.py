@@ -1,5 +1,9 @@
 """L1: one-line status note per work order (中文 + English in one LLM call), stored in wo_status_note.
 
+LLM use is kept low: only a work order with a red or amber flag gets an AI-worded note; a normal one gets the
+rule sentence (it says the same). An AI note is rewritten at most every LLM_MIN_INTERVAL_SEC unless its flags
+change; in between the rule sentence with the current numbers is shown.
+
 The rules (wo_rules) decide state, light and flags; the LLM only words them. A note is
 regenerated when its facts change (new data, a state change, new settings). Every number in the
 LLM sentence must be one of the facts, otherwise the rule sentence is stored instead (Q26).
@@ -23,6 +27,7 @@ from services.wo_rules import FLAG_TEXT, STATE_TEXT, note_facts, numbers_ok, rul
 log = logging.getLogger("wifi.notes")
 
 RETRY_SEC = 300                 # a rule fallback (LLM offline / rejected) is retried after this long
+LLM_MIN_INTERVAL_SEC = 1800     # an AI note is rewritten at most this often while its flags stay the same
 TIMEOUT_SEC = 120               # background work: may wait behind interactive LLM calls
 SCAN_EVERY_SEC = 30
 _scan = {"at": 0.0, "pending": True}
@@ -57,6 +62,15 @@ def _key(wo, product):
     return (wo, product or "")
 
 
+def flagged(status: dict) -> bool:
+    """A red or amber check: worth an AI-worded note."""
+    return any(f["level"] in ("bad", "warn") for f in status.get("flags", []))
+
+
+def _codes(flags):
+    return sorted(f.get("code") for f in flags or [])
+
+
 def _stored(conn, keys=None) -> dict:
     rows = db.fetch_all(conn, "SELECT * FROM wo_status_note") if keys is None else db.fetch_all(
         conn, "SELECT * FROM wo_status_note WHERE (work_order, product_model) IN %s", (tuple(keys),)) if keys else []
@@ -70,7 +84,7 @@ def current_note(status: dict, stored: Optional[dict]) -> dict:
         return {"zh": stored["text_zh"], "en": stored["text_en"], "source": stored["source"],
                 "generated_at": stored["created_at"].isoformat() if stored["created_at"] else None, "pending": False}
     return {"zh": rule_note(status, "zh"), "en": rule_note(status, "en"), "source": "rule", "generated_at": None,
-            "pending": config.WO_NOTE_AUTO}
+            "pending": config.WO_NOTE_AUTO and flagged(status)}
 
 
 def notes_for(statuses: dict) -> dict:
@@ -94,6 +108,8 @@ def generate(status: dict) -> dict:
     """{zh, en, source, model, error, elapsed}: the LLM sentence when it passes the checks, else the rule one."""
     facts, digest = note_facts(status)
     fallback = {"zh": rule_note(status, "zh"), "en": rule_note(status, "en"), "source": "rule", "model": None}
+    if not flagged(status):              # normal work order: the rule sentence, no LLM call
+        return {**fallback, "error": None, "elapsed": 0.0, "hash": digest}
     if not llm.status()["connected"]:
         return {**fallback, "error": "llm_offline", "elapsed": 0.0, "hash": digest}
     t0 = time.perf_counter()
@@ -152,6 +168,10 @@ def _due(statuses: dict, stored: dict) -> list:
                 continue
             if row["created_at"] and now - row["created_at"].timestamp() < RETRY_SEC:
                 continue
+        elif row and flagged(st) and row["source"] == "llm" and row["created_at"] \
+                and now - row["created_at"].timestamp() < LLM_MIN_INTERVAL_SEC \
+                and _codes((row["facts"] or {}).get("flags")) == _codes(note_facts(st)[0]["flags"]):
+            continue      # same flags, rewritten recently: wait (the rule sentence shows the new numbers)
         due.append(st)
     rank = {"active": 0, "paused": 1, "done": 2}
     due.sort(key=lambda st: (rank.get(st["state"], 3), -(st["last_test"].timestamp() if st.get("last_test") else 0)))
@@ -174,9 +194,13 @@ def process_once() -> bool:
             return False
         try:
             due = _due(statuses, _stored(conn))
+            plain = [st for st in due if not flagged(st)]
+            for status in plain:                    # rule sentences: no LLM, all at once
+                store(conn, status, generate(status))
+            due = [st for st in due if flagged(st)]
             _scan.update(at=time.time(), pending=len(due) > 1)
             if not due:
-                return False
+                return bool(plain)
             if not llm.status()["connected"]:
                 # Offline: every due note gets its rule sentence now (no LLM wait); retried later.
                 for status in due:

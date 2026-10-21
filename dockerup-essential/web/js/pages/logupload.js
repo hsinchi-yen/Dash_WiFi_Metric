@@ -113,7 +113,7 @@ async function finishAnalyze(body) {
     $('#luStepConfirm').hidden = false;
     renderWoPlaceholder();
     st.aiAvailable = await checkAi();
-    setMode(st.aiAvailable ? 'chat' : 'form');
+    setMode('form');          // the form first (Q17); the AI assistant opens on request (each chat turn costs two LLM calls)
 }
 
 function endAnalyze() {
