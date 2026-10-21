@@ -1,13 +1,16 @@
-// Log Upload: zip or folder → /api/log-upload/analyze | folder/start+files+finish → confirm product,
-// work order (or NOWO) and planned quantity (AI chat via /chat, or the form via /validate — same
-// rules R1–R16, same hidden inputs) → /commit (NDJSON progress stream, cancellable) → results, per-file
-// list (CSV/TXT), undo. Uploaders see and undo only their own batches.
+// Log Upload, a three-step wizard (5D, Q16): ① zip or folder → /api/log-upload/analyze | folder/start+files+finish
+// ② confirm product, work order (or NOWO) and planned quantity in the form (/validate: rules R1–R16); the assistant
+// beside it cross-checks the file-name guesses, the stored plan (Q4) and the warnings by rules, and the AI chat
+// (/chat, same rules) opens only on request (Q17, LLM budget) ③ /commit (NDJSON progress, cancellable) → results,
+// this batch against the product's history (rules; "Explain with AI" on request), the work order, per-file list
+// (CSV/TXT), undo. A finished step folds into one line. Uploaders see and undo only their own batches.
 // Server texts (checks, chat opening, errors) come in both languages; the AI replies in the UI language.
 import { apiDelete, apiGet, apiPost, download, errorText, eventText, getToken, readNdjson, request, streamPost, toError } from '../core/api.js';
 import * as auth from '../core/auth.js';
-import { esc, fmtDateTime, fmtInt } from '../core/format.js';
+import { esc, fmtDateTime, fmtInt, fmtNum } from '../core/format.js';
 import { getLang, localized, t } from '../core/i18n.js';
-import { $, debounce, toast } from '../core/ui.js';
+import { detailHref } from '../core/scope.js';
+import { $, $$, debounce, toast } from '../core/ui.js';
 
 const NEW_PRODUCT = '__new__';
 const BATCH_FILES = 500;
@@ -16,7 +19,8 @@ const BATCH_BYTES = 50 * 1024 * 1024;
 const st = {
     uploadId: null, owner: null, facts: null, products: [], committedId: null, busy: false, running: false,
     validation: null, validateSeq: 0, mode: 'form', aiAvailable: false, step: 'product',
-    chat: [], chatBusy: false, extractFails: 0, openings: {}, fileLabel: null, result: null,
+    chat: [], chatBusy: false, extractFails: 0, openings: {}, fileLabel: null, result: null, reading: null, readingAi: null,
+    wizard: 1,
 };
 const statusText = {};          // id → [text or () => text, kind], re-rendered on a language switch
 let appRef;
@@ -39,13 +43,14 @@ function renderAccess() {
     $('#luHistoryUser').hidden = !admin;
     $('#luHistoryFilterLabel').hidden = !admin;
     $('#luHistoryTitle').textContent = admin ? t('lu.history') : t('lu.historyMine');
+    $('#luHistoryWhoHead').hidden = !admin;
     if (st.uploadId && !st.busy && (!user || user.username !== st.owner)) resetFlow();
 }
 
 /* ─── Step 1: choose + analyze ─── */
 function resetFlow() {
     Object.assign(st, { uploadId: null, owner: null, facts: null, committedId: null, validation: null, chat: [], extractFails: 0,
-                        openings: {}, fileLabel: null, result: null, step: 'product', running: false });
+                        openings: {}, fileLabel: null, result: null, step: 'product', running: false, reading: null, readingAi: null });
     st.validateSeq += 1;
     renderChat();
     $('#luChatInput').value = '';
@@ -69,6 +74,37 @@ function resetFlow() {
     renderChips();
     setInputsDisabled(false);
     updateUploadButton();
+    $('#luReading').hidden = true;
+    $('#btnLuViewWo').hidden = true;
+    renderAssist();
+    showStep(1);
+}
+
+/* ─── Wizard: one step on screen; the finished ones fold into the summary line ─── */
+function showStep(n) {
+    st.wizard = n;
+    $('#luStep1').hidden = n !== 1;
+    $('#luSummary').hidden = n === 1;
+    $('#luStepConfirm').hidden = n !== 2;
+    $('#luStepProgress').hidden = n !== 3;
+    $('#luConfirmedLine').hidden = n !== 3;
+    $$('#luSteps li[data-step]').forEach(li => {
+        const k = Number(li.dataset.step);
+        li.classList.toggle('done', k < n);
+        li.classList.toggle('current', k === n);
+    });
+    renderSummary();
+}
+
+function renderSummary() {
+    const f = st.facts;
+    $('#luSummaryText').textContent = st.fileLabel || '';
+    $('#luSummaryFacts').textContent = f ? t('lu.summaryFacts', { logs: fmtInt(f.logs), units: fmtInt(f.unique_sn), pass: fmtInt(f.pass),
+                                                                  fail: fmtInt(f.fail), existing: fmtInt(f.existing_total) }) : '';
+    const r = st.validation?.resolved;
+    const qty = formFields().planned_qty;
+    $('#luConfirmedLine').textContent = r ? t('lu.confirmedLine', { pm: r.product || '—', wo: r.work_order || '—', qty: qty ? fmtInt(qty) : '—' }) : '';
+    $('#btnLuReset').hidden = st.wizard === 3 && st.running;
 }
 
 function setInputsDisabled(disabled) {
@@ -110,7 +146,7 @@ async function finishAnalyze(body) {
     renderFacts(body.facts);
     renderProductOptions();
     setStatus('#luAnalyzeStatus', () => t('lu.analyzed'), 'ok');
-    $('#luStepConfirm').hidden = false;
+    showStep(2);
     renderWoPlaceholder();
     st.aiAvailable = await checkAi();
     setMode('form');          // the form first (Q17); the AI assistant opens on request (each chat turn costs two LLM calls)
@@ -271,6 +307,57 @@ function renderIssues(issues) {
     $('#luAckRow').hidden = !needsAck;
     if (!needsAck) $('#luAck').checked = false;
     renderAlign(issues.find(i => i.code === 'R14'));
+    renderPlanHint();
+    renderAssist();
+}
+
+/** The work order's stored plan (administrator or an earlier batch, Q4): offered, never filled in silently. */
+function renderPlanHint() {
+    const plan = st.validation?.plan;
+    const el = $('#luPlanHint');
+    const qty = formFields().planned_qty;
+    if (!plan) { el.hidden = true; el.innerHTML = ''; return; }
+    const who = plan.by_admin ? t('lu.planByAdmin', { who: plan.updated_by || '—' }) : t('lu.planByBatch', { who: plan.updated_by || '—' });
+    const same = String(plan.planned_qty) === String(qty).replace(/,/g, '');
+    el.hidden = false;
+    el.innerHTML = `${esc(t('lu.planHint', { qty: fmtInt(plan.planned_qty), who, time: fmtDateTime(plan.updated_at) }))}${same ? '' :
+        ` <button class="btn small" type="button" data-use-plan="${esc(plan.planned_qty)}">${esc(t('lu.usePlan', { qty: fmtInt(plan.planned_qty) }))}</button>`}`;
+}
+
+/** The assistant's checks, by rules (no LLM call): file-name guesses against the input, the plan, duplicates, what blocks the upload. */
+function renderAssist() {
+    const box = $('#luAssistChecks');
+    if (!st.facts) { box.innerHTML = ''; return; }
+    const f = st.facts;
+    const fields = formFields();
+    const items = [];
+    const add = (level, text, action = '') => items.push(`<li class="${level}">${esc(text)}${action}</li>`);
+    const use = (attr, value) => ` <button class="btn small" type="button" ${attr}="${esc(value)}">${esc(t('lu.chk.use', { v: value }))}</button>`;
+    if (f.inferred_product) {
+        if (!fields.product) add('info', t('lu.chk.pmGuess', { v: f.inferred_product }), use('data-use-pm', f.inferred_product));
+        else if (fields.product.toLowerCase() === f.inferred_product.toLowerCase() || st.validation?.resolved?.product === f.inferred_product) add('ok', t('lu.chk.pmSame'));
+        else add('warn', t('lu.chk.pmDiff', { guess: f.inferred_product, v: fields.product }), use('data-use-pm', f.inferred_product));
+    } else add('info', t('lu.chk.pmNone'));
+    if (f.inferred_wo) {
+        if (!fields.work_order) add('info', t('lu.chk.woGuess', { v: f.inferred_wo }), use('data-use-wo', f.inferred_wo));
+        else if (fields.work_order === f.inferred_wo) add('ok', t('lu.chk.woSame'));
+        else add('warn', t('lu.chk.woDiff', { guess: f.inferred_wo, v: fields.work_order }), use('data-use-wo', f.inferred_wo));
+    }
+    if (f.existing_total) add('info', t('lu.chk.existing', { n: fmtInt(f.existing_total), logs: fmtInt(f.logs) }));
+    const plan = st.validation?.plan;
+    if (fields.work_order && st.validation) {
+        if (plan) add('ok', t('lu.chk.plan', { qty: fmtInt(plan.planned_qty), tested: fmtInt(plan.tested) }));
+        else add('info', fields.planned_qty ? t('lu.chk.newPlan', { qty: fmtInt(fields.planned_qty) }) : t('lu.chk.noPlan'));
+    }
+    const issues = st.validation?.issues || [];
+    const errors = issues.filter(i => i.level === 'error').length;
+    const warns = issues.filter(i => i.level === 'warn').length;
+    if (st.validation) {
+        if (errors) add('error', t('lu.chk.errors', { n: errors }));
+        else if (warns) add('warn', t('lu.chk.warns', { n: warns }));
+        else add('ok', t('lu.chk.ready'));
+    }
+    box.innerHTML = items.join('');
 }
 
 function renderAlign(a) {
@@ -300,7 +387,7 @@ function setMode(mode, note = '') {
     st.mode = mode;
     const chat = mode === 'chat';
     $('#luChatPanel').hidden = !chat;
-    $('#luFormPanel').hidden = chat;
+    $('#luAssistChecks').hidden = chat;
     renderModeLabels();
     if (note) st.chat.push({ role: 'note', content: note });
     if (chat) {
@@ -450,7 +537,7 @@ async function commit() {
     st.running = true;
     setInputsDisabled(true);
     updateUploadButton();
-    $('#luStepProgress').hidden = false;
+    showStep(3);
     $('#luResultGrid').hidden = true;
     $('#luResultNote').textContent = '';
     $('#luFailureBox').hidden = true;
@@ -463,7 +550,6 @@ async function commit() {
     fill.className = '';
     fill.style.width = '0%';
     setStatus('#luProgressText', () => t('lu.prepare'));
-    $('#luStepProgress').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     let finished = false;
     try {
         const res = await request('/api/log-upload/commit', {
@@ -473,8 +559,12 @@ async function commit() {
         if (!res.ok) {
             const err = await toError(res);
             if (err.data.issues) { st.validation = err.data; renderIssues(err.data.issues); }
-            fill.className = 'error';
-            setStatus('#luProgressText', () => errorText(err.data, err.status), 'error');
+            showStep(2);            // nothing was written: back to the form, the reason stays visible
+            setStatus('#luAnalyzeStatus', () => errorText(err.data, err.status), 'error');
+            const msg = document.createElement('li');
+            msg.className = 'error';
+            msg.textContent = `❌ ${errorText(err.data, err.status)}`;
+            $('#luIssues').prepend(msg);
             return;
         }
         await readNdjson(res, ev => { if (handleEvent(ev)) finished = true; });
@@ -518,6 +608,15 @@ function handleEvent(ev) {
         $('#btnLuRevert').hidden = !(ev.uploaded > 0);
         $('#btnLuNext').hidden = false;
         $('#luItemsRow').hidden = false;
+        const r = st.validation?.resolved;
+        const wo = ev.work_order || r?.work_order;
+        if (wo && ev.uploaded > 0) {
+            const a = $('#btnLuViewWo');
+            a.hidden = false;
+            a.href = detailHref(wo, ev.product || r?.product);
+            a.textContent = t('lu.viewWo', { wo });
+        }
+        if (ev.uploaded > 0) loadReading();
         return true;
     }
     return false;
@@ -537,6 +636,49 @@ function renderResults(ev) {
     $('#luFailureBox').hidden = !failures.length;
     $('#luFailureSummary').textContent = t('lu.failSummary', { n: failures.length });
     $('#luFailureRows').innerHTML = failures.map(f => `<tr><td class="truncate" title="${esc(f.filename)}">${esc(f.filename)}</td><td>${esc(f.error)}</td></tr>`).join('');
+}
+
+/* ─── This batch against the product's history (rules; the LLM words it only on request) ─── */
+async function loadReading() {
+    const id = st.committedId;
+    try {
+        st.reading = await apiGet(`/api/log-upload/${id}/reading`);
+        st.readingAi = null;
+        renderReading();
+    } catch { /* the results stay without the reading */ }
+}
+
+function readingText(p) {
+    const v = p.values || {};
+    const vars = { ...v, y: fmtNum(v.y, 2), hist: v.hist != null ? fmtNum(v.hist, v.y != null ? 2 : 1) : '—', p50: fmtNum(v.p50, 1),
+                   top: localized(v.top_zh, v.top_en) || v.top || '' };
+    return t(`lu.read.${p.code}`, vars);
+}
+
+function renderReading() {
+    const r = st.reading;
+    const box = $('#luReading');
+    if (!r) { box.hidden = true; return; }
+    box.hidden = false;
+    const cls = { good: 'ok', warn: 'warn', bad: 'error', info: 'info', none: 'info' };
+    $('#luReadPoints').innerHTML = r.points.map(p => `<li class="${cls[p.level] || 'info'}">${esc(readingText(p))}</li>`).join('');
+    $('#btnLuReadAi').hidden = !st.aiAvailable || !!st.readingAi;
+    const ai = $('#luReadAiText');
+    ai.hidden = !st.readingAi;
+    if (st.readingAi) ai.innerHTML = `<span class="ai-tag">${esc(t('wo.ai'))}</span>${esc(st.readingAi.text || t('lu.readAiEmpty'))}`;
+}
+
+async function readingAi() {
+    const btn = $('#btnLuReadAi');
+    btn.disabled = true;
+    try {
+        st.readingAi = await apiPost(`/api/log-upload/${st.committedId}/reading/ai?lang=${getLang()}`);
+        renderReading();
+    } catch (err) {
+        toast(err.message, 'bad');
+    } finally {
+        btn.disabled = false;
+    }
 }
 
 async function cancelUpload() {
@@ -593,23 +735,23 @@ async function loadHistory() {
     const filterUser = auth.isAdmin() ? $('#luHistoryUser').value : '';
     try {
         const data = await apiGet(`/api/log-upload/history?limit=20${filterUser ? `&username=${encodeURIComponent(filterUser)}` : ''}`);
-        if (!data.items.length) { tbody.innerHTML = `<tr><td colspan="11" class="muted">${esc(t('lu.none'))}</td></tr>`; return; }
+        const cols = auth.isAdmin() ? 8 : 7;
+        if (!data.items.length) { tbody.innerHTML = `<tr><td colspan="${cols}" class="muted">${esc(t('lu.none'))}</td></tr>`; return; }
         const me = auth.currentUser();
         tbody.innerHTML = data.items.map(r => {
             const canRevert = ['done', 'failed', 'cancelled'].includes(r.status) && r.uploaded > 0 && (auth.isAdmin() || r.username === me.username);
             const who = r.display_name && r.display_name !== r.username ? t('common.nameWithId', { name: r.display_name, id: r.username }) : (r.username || '—');
             const tip = r.status === 'reverted' && r.reverted_by ? t('lu.revertedBy', { user: r.reverted_by, time: fmtDateTime(r.reverted_at) }) : (r.error || '');
+            const result = r.uploaded != null ? t('lu.histResult', { n: fmtInt(r.uploaded), s: fmtInt(r.skipped), f: fmtInt(r.failed) }) : '—';
+            const planTip = r.planned_qty != null ? t('lu.histPlan', { qty: fmtInt(r.planned_qty) }) : '';
             return `<tr>
                 <td class="nowrap">${esc(fmtDateTime(r.created_at))}</td>
-                <td class="nowrap">${esc(r.work_order || '—')}</td>
+                <td class="nowrap">${r.work_order && r.uploaded ? `<a class="wo-link" href="${esc(detailHref(r.work_order, r.product_model))}" title="${esc(planTip)}">${esc(r.work_order)}</a>` : esc(r.work_order || '—')}</td>
                 <td class="nowrap">${esc(r.product_model || '—')}${r.new_product ? ` <span class="badge warn">${esc(t('lu.newProductTag'))}</span>` : ''}</td>
-                <td class="num">${r.planned_qty != null ? fmtInt(r.planned_qty) : '—'}</td>
                 <td class="truncate" title="${esc(r.source_name || '')}">${r.source_kind === 'folder' ? '📁 ' : '🗜 '}${esc(r.source_name || '—')}</td>
-                <td class="num">${r.uploaded != null ? fmtInt(r.uploaded) : '—'}</td>
-                <td class="num">${r.skipped != null ? fmtInt(r.skipped) : '—'}</td>
-                <td class="num">${r.failed != null ? fmtInt(r.failed) : '—'}</td>
+                <td class="nowrap num">${esc(result)}</td>
                 <td class="nowrap"><span class="badge ${STATUS[r.status] || 'muted'}" title="${esc(tip)}">${esc(t(`lu.status.${r.status}`))}</span>${r.mode === 'chat' ? ` <span title="${esc(t('lu.viaChat'))}">🤖</span>` : ''}</td>
-                <td class="nowrap">${esc(who)}</td>
+                ${auth.isAdmin() ? `<td class="nowrap">${esc(who)}</td>` : ''}
                 <td class="nowrap">
                     <button class="btn small" type="button" data-items="${esc(r.id)}" title="${esc(t('lu.items.csv'))}">CSV</button>
                     ${canRevert ? `<button class="btn small" type="button" data-revert="${esc(r.id)}" data-label="${esc(r.work_order || '')}">${esc(t('lu.revert'))}</button>` : ''}
@@ -617,7 +759,7 @@ async function loadHistory() {
             </tr>`;
         }).join('');
     } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="11" class="bad-text">${esc(err.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="bad-text">${esc(err.message)}</td></tr>`;
     }
 }
 
@@ -640,7 +782,7 @@ function init(app) {
     $('#btnLuFolder').addEventListener('click', () => { if (!st.busy) $('#luFolder').click(); });
     $('#luFolder').addEventListener('change', e => { if (e.target.files?.length) analyzeFolder(e.target.files); });
     const debounced = debounce(validate, 300);
-    const changed = () => { st.validation = null; updateUploadButton(); renderExtract(); debounced(); };
+    const changed = () => { st.validation = null; updateUploadButton(); renderExtract(); renderAssist(); debounced(); };
     ['#luProductNew', '#luWo', '#luQty'].forEach(id => $(id).addEventListener('input', changed));
     $('#luProduct').addEventListener('change', () => {
         $('#luProductNew').hidden = $('#luProduct').value !== NEW_PRODUCT;
@@ -656,6 +798,18 @@ function init(app) {
     });
     $('#luChips').addEventListener('click', e => { const btn = e.target.closest('[data-chip]'); if (btn) chatSend(btn.dataset.chip); });
     $('#btnLuReset').addEventListener('click', resetFlow);
+    $('#btnLuBack').addEventListener('click', resetFlow);
+    $('#btnLuReadAi').addEventListener('click', readingAi);
+    $('#luStepConfirm').addEventListener('click', e => {
+        const plan = e.target.closest('[data-use-plan]');
+        const pm = e.target.closest('[data-use-pm]');
+        const wo = e.target.closest('[data-use-wo]');
+        if (plan) $('#luQty').value = plan.dataset.usePlan;
+        else if (pm) setProductValue(pm.dataset.usePm);
+        else if (wo) $('#luWo').value = wo.dataset.useWo;
+        else return;
+        changed();
+    });
     $('#btnLuNext').addEventListener('click', () => { resetFlow(); $('#luDrop').focus(); });
     $('#btnLuMode').addEventListener('click', () => { if (!st.chatBusy) setMode(st.mode === 'chat' ? 'form' : 'chat'); });
     $('#btnLuChatSend').addEventListener('click', () => chatSend());
@@ -693,7 +847,10 @@ function onLangChange() {
     renderChips();
     renderExtract();
     if (st.validation) renderIssues(st.validation.issues);
+    else renderAssist();
     if (st.result) renderResults(st.result);
+    renderSummary();
+    renderReading();
     if (appRef?.page?.id === 'logupload' && st.uploadId && !st.committedId) loadHistory();   // load() is skipped while busy
 }
 

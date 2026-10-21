@@ -1,4 +1,4 @@
-"""Web Log Upload: zip / folder → facts → validate or AI chat → commit (NDJSON) → history / items / revert.
+"""Web Log Upload: zip / folder → facts → validate or AI chat → commit (NDJSON) → reading / history / items / revert.
 
 Administrators and uploaders can upload; uploaders only reach their own batches.
 """
@@ -16,7 +16,7 @@ import config
 import db
 from errors import ApiError, Msg, bad_request, conflict
 from schemas import ChatBody, CommitBody, FolderStartBody, ValidateBody
-from services import auth, llm, products, upload, upload_chat
+from services import auth, batch_reading, llm, products, ratelimit, settings, upload, upload_chat
 from services import upload_rules as rules
 
 router = APIRouter(prefix="/api/log-upload", tags=["log-upload"])
@@ -130,7 +130,21 @@ def validate(body: ValidateBody, user=Depends(auth.require_uploader)):
         if row["status"] == "receiving":
             raise conflict(Msg("資料夾還在接收中", "The folder is still being received."), "receiving")
         fields, issues = upload.validate(conn, row, body.work_order or "", body.product or "", body.planned_qty)
-    return upload.validation_payload(fields, issues)
+        payload = upload.validation_payload(fields, issues)
+        payload["plan"] = _plan_of(conn, fields.get("work_order"))
+    return payload
+
+
+def _plan_of(conn, work_order):
+    """The work order's stored planned quantity (5D: the form offers it; Q4: set by the administrator or an earlier batch)."""
+    if not work_order:
+        return None
+    row = db.fetch_one(conn, """
+        SELECT p.planned_qty, p.updated_by, p.updated_at, p.admin_qty IS NOT NULL AND p.upload_id IS NULL AS by_admin,
+               (SELECT COUNT(DISTINCT sn) FROM test_record t WHERE t.work_order = p.work_order) AS tested
+        FROM wo_plan p WHERE p.work_order = %s
+    """, (work_order,))
+    return db.jsonable([row])[0] if row else None
 
 
 def _chat_extract(messages, registry):
@@ -316,6 +330,31 @@ def items(upload_id: str, format: str = Query("json", pattern="^(json|csv|txt)$"
     name = f"db_upload_log_{when:%Y%m%d_%H%M%S}.{format}"
     return Response(content=text, media_type="text/csv" if format == "csv" else "text/plain",
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@router.get("/{upload_id}/reading")
+def reading(upload_id: str, user=Depends(auth.require_uploader)):
+    """This batch against the product's history (rules; L7)."""
+    with db.db() as conn:
+        upload.owned_upload(conn, upload_id, user)
+        f = batch_reading.facts(conn, upload_id)
+    return {"facts": f, **batch_reading.read(f, settings.get())}
+
+
+@router.post("/{upload_id}/reading/ai")
+def reading_ai(request: Request, upload_id: str, lang: str = Query("zh", pattern="^(zh|en)$"), user=Depends(auth.require_uploader)):
+    """The same reading worded by the LLM, on request only."""
+    if not llm.status()["connected"]:
+        raise ApiError(503, Msg("AI 服務離線，目前無法說明。", "The AI service is offline."), "llm_offline")
+    ratelimit.limit(request, "upload_reading", 6)
+    with db.db() as conn:
+        upload.owned_upload(conn, upload_id, user)
+        f = batch_reading.facts(conn, upload_id)
+    points = batch_reading.read(f, settings.get())
+    try:
+        return batch_reading.explain(f, points, lang)
+    except Exception as exc:
+        raise ApiError(503, Msg("AI 說明失敗，請稍後再試。", "The AI could not explain it. Please try again later."), "llm_failed") from exc
 
 
 @router.delete("/{upload_id}")

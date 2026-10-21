@@ -83,11 +83,11 @@ with sync_playwright() as p:
     fill(wo="5101-261340007", qty="252")
     page.evaluate("document.getElementById('btnLuUpload').disabled = false")
     page.click("#btnLuUpload")                 # the confirm() dialog is accepted by the handler
-    page.wait_for_selector("#luStepProgress:not([hidden])", timeout=10000)
-    page.wait_for_timeout(1500)
-    msg = page.locator("#luProgressText").inner_text()
-    bar = page.locator("#luProgressFill").get_attribute("class") or ""
-    check("forced Upload with a wrong work order: server refuses, page shows the error", "error" in bar and msg, msg[:110])
+    page.wait_for_timeout(2500)
+    # The wizard (5D) goes back to step 2 with the server's refusal on top of the checks, so the values can be fixed.
+    msg = page.locator("#luIssues li.error").first.inner_text() if page.locator("#luIssues li.error").count() else ""
+    check("forced Upload with a wrong work order: server refuses, the page is back on step 2 with the error",
+          page.locator("#luStepConfirm").is_visible() and page.locator("#luStepProgress").is_hidden() and "❌" in msg, msg[:110])
     page.screenshot(path=f"{OUT}/b05_forced_upload_refused.png", full_page=True)
     hist = page.locator("#luHistoryRows").inner_text()
     check("nothing recorded as uploaded", "5101-261340007" not in hist)

@@ -52,6 +52,7 @@ run i18n               node tests/js/i18n_keys.mjs
 run unit_wo_rules      python3 tests/unit_wo_rules.py
 run unit_fail_rules    python3 tests/unit_fail_rules.py
 run unit_fail_actions  python3 tests/unit_fail_actions.py
+run unit_forecast      python3 tests/unit_forecast_rules.py
 run golden             python3 tests/golden.py check "$BASE"
 run plan_revert        in_image unit_plan_revert.py
 run fail_classify      in_image check_fail_classification.py
@@ -59,12 +60,14 @@ run accept_5a          python3 tests/acceptance_phase5a.py "$BASE"
 run accept_5b          python3 tests/acceptance_phase5b.py "$BASE"
 run accept_5f1         python3 tests/acceptance_phase5f1.py "$BASE"
 run accept_5c          python3 tests/acceptance_phase5c.py "$BASE"
+run accept_forecast    python3 tests/acceptance_forecast.py "$BASE"
 run accept_llm_budget  python3 tests/acceptance_llm_budget.py "$BASE"
 if [ -n "$SAMPLE_ZIP" ]; then
     run accept_upload  python3 tests/acceptance_upload.py "$BASE" "$SAMPLE_ZIP"
     [ $QUICK = 1 ] || run boundary_upload python3 tests/boundary_upload.py "$BASE" "$SAMPLE_ZIP"
     [ $QUICK = 1 ] || run boundary_ui     python3 tests/boundary_upload_ui.py "$BASE" "$SHOTS/boundary" "$SAMPLE_ZIP"
     run e2e_phase4     python3 tests/e2e_phase4.py "$BASE" "$SHOTS/phase4" "$SAMPLE_ZIP"
+    run accept_5d      python3 tests/acceptance_phase5d.py "$BASE" "$SAMPLE_ZIP"
 else
     echo "skip  upload suites (set SAMPLE_ZIP)"
 fi
@@ -73,7 +76,8 @@ run e2e_screens        python3 tests/e2e_screens.py "$BASE" "$SHOTS/screens"
 run e2e_5a             python3 tests/e2e_phase5a.py "$BASE" "$SHOTS/phase5a"
 run e2e_5b             python3 tests/e2e_phase5b.py "$BASE" "$SHOTS/phase5b"
 run e2e_5f1            python3 tests/e2e_phase5f1.py "$BASE" "$SHOTS/phase5f1"
-[ $QUICK = 1 ] || run e2e_5c python3 tests/e2e_phase5c.py "$BASE" "$SHOTS/phase5c"
+run e2e_5c             python3 tests/e2e_phase5c.py "$BASE" "$SHOTS/phase5c"
+[ $QUICK = 1 ] || run e2e_forecast python3 tests/e2e_forecast.py "$BASE" "$SHOTS/forecast"
 run e2e_5f2            python3 tests/e2e_phase5f2.py "$BASE" "$SHOTS/phase5f2"
 run golden_after       python3 tests/golden.py check "$BASE"
 [ -n "$COMPAT" ] && run db_compat tests/db_compat.sh "$COMPAT"

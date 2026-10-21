@@ -113,8 +113,8 @@ class SettingsBody(BaseModel):
     yield_warn: Number = None
     work_start: Optional[StrictStr] = Field(None, max_length=5)
     work_end: Optional[StrictStr] = Field(None, max_length=5)
+    work_days: Optional[list[StrictInt]] = Field(None, max_length=7, description="ISO weekdays, Monday = 1")
     active_minutes: Optional[StrictInt] = None
-    idle_warn_minutes: Optional[StrictInt] = None
     done_idle_hours: Optional[StrictInt] = None
     fail_streak: Optional[StrictInt] = None
     tp_drop_pct: Optional[StrictInt] = None

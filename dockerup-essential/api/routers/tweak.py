@@ -1,4 +1,5 @@
-"""DB Maintenance (DB Tweak): browse and delete test records — administrator session only.
+"""DB Maintenance (DB Tweak): browse, export and delete test records — administrator session only.
+Before any delete the page shows /impact (5D): what the delete removes and how each work order changes.
 
 Replaces the per-request PostgreSQL credentials of the previous version; queries run through the
 API's pool, deletes are written to account_audit, and the statistics view refreshes after a delete.
@@ -82,6 +83,83 @@ def records(work_order: Optional[str] = None, product_model: Optional[str] = Non
     LIMIT %s
     """, (*params, limit))
     return {"items": rows, "count": len(rows), "work_order": work_order or "ALL", "product_model": product_model or "ALL"}
+
+
+def _scope(work_order: Optional[str], product_model: Optional[str], record_id: Optional[int], upload_id: Optional[str] = None):
+    """WHERE for one record, one web upload batch, or a work order (and product), as the delete endpoints use them."""
+    if record_id is not None:
+        return "WHERE id = %s", [record_id]
+    if upload_id:
+        return "WHERE upload_id = %s", [upload_id]
+    where, params = "", []
+    if work_order and work_order not in ("ALL", "N/A"):
+        where, params = "WHERE work_order = %s", [work_order]
+    elif work_order == "N/A":
+        where = "WHERE (work_order IS NULL OR work_order = '')"
+    return _product_where(product_model, where, params), params
+
+
+@router.get("/impact")
+def impact(work_order: Optional[str] = Query(None, max_length=64), product_model: Optional[str] = Query(None, max_length=128),
+           record_id: Optional[int] = None, upload_id: Optional[str] = Query(None, max_length=64)) -> dict[str, Any]:
+    """What a delete would remove (5D, Q19 C) — one record, one web upload batch (its undo) or a work order: rows, units,
+    web-uploaded rows and their batches, FAIL classifications, dispositions, RD triage, and each work order's units /
+    yield before and after."""
+    if record_id is None and not work_order and not upload_id:
+        raise ApiError(400, Msg("請指定工單、上傳批次或一筆資料。", "Choose a work order, an upload batch or one record."), "no_scope")
+    where, params = _scope(work_order, product_model, record_id, upload_id)
+    ids_sql = f"SELECT id FROM test_record {where}"
+    row = db.rows(f"""SELECT COUNT(*) AS rows, COUNT(DISTINCT sn) AS units, COUNT(*) FILTER (WHERE upload_id IS NOT NULL) AS web_rows,
+                             COUNT(*) FILTER (WHERE result = FALSE) AS fail_rows, MIN(test_time) AS first_test, MAX(test_time) AS last_test,
+                             array_agg(DISTINCT work_order) AS work_orders
+                      FROM test_record {where}""", tuple(params))[0]
+    batches = db.rows(f"""SELECT l.id, l.created_at, l.username, l.source_name, l.status, COUNT(*) AS rows
+                          FROM test_record t JOIN upload_log l ON l.id = t.upload_id
+                          WHERE t.id IN ({ids_sql}) GROUP BY 1, 2, 3, 4, 5 ORDER BY 2""", tuple(params))
+    side = db.rows(f"""SELECT (SELECT COUNT(*) FROM fail_analysis WHERE record_id IN ({ids_sql})) AS fail_analyses,
+                              (SELECT COUNT(*) FROM fail_analysis WHERE record_id IN ({ids_sql}) AND rd_status <> 'new') AS rd_triaged,
+                              (SELECT COUNT(*) FROM fail_disposition WHERE record_id IN ({ids_sql})) AS dispositions""",
+                   tuple(params) * 3)[0]
+    wos = [w for w in (row["work_orders"] or []) if w]
+    effect = []
+    for wo in wos[:5]:
+        before = db.rows("""WITH r AS (SELECT result, ROW_NUMBER() OVER (PARTITION BY sn ORDER BY test_time DESC, id DESC) AS rn
+                                       FROM test_record WHERE work_order = %s)
+                            SELECT COUNT(*) AS units, COUNT(*) FILTER (WHERE result) AS pass FROM r WHERE rn = 1""", (wo,))[0]
+        after = db.rows(f"""WITH r AS (SELECT result, ROW_NUMBER() OVER (PARTITION BY sn ORDER BY test_time DESC, id DESC) AS rn
+                                       FROM test_record WHERE work_order = %s AND id NOT IN ({ids_sql}))
+                            SELECT COUNT(*) AS units, COUNT(*) FILTER (WHERE result) AS pass FROM r WHERE rn = 1""", (wo, *params))[0]
+        plan = db.rows("SELECT planned_qty FROM wo_plan WHERE work_order = %s", (wo,))
+        pct = lambda x: round(int(x["pass"]) * 100.0 / int(x["units"]), 2) if int(x["units"]) else None  # noqa: E731
+        effect.append({"work_order": wo, "units_before": int(before["units"]), "yield_before": pct(before),
+                       "units_after": int(after["units"]), "yield_after": pct(after), "planned_qty": plan[0]["planned_qty"] if plan else None})
+    return {"rows": int(row["rows"]), "units": int(row["units"]), "web_rows": int(row["web_rows"]), "fail_rows": int(row["fail_rows"]),
+            "first_test": row["first_test"], "last_test": row["last_test"], "batches": [{**b, "rows": int(b["rows"])} for b in batches],
+            **{k: int(v) for k, v in side.items()}, "work_orders": effect}
+
+
+EXPORT_COLUMNS = ("id, test_time, work_order, product_model, sn, wifi_mac, bt_mac, result, band_result_24g, band_result_5g, bt_result, "
+                  "avg_24g, min_24g, max_24g, std_24g, rssi_after_24g, avg_5g, min_5g, max_5g, std_5g, rssi_after_5g, "
+                  "bt_avg_latency, bt_loss_rate, source_file, file_hash, created_at, upload_id")
+
+
+@router.get("/export.csv")
+def export_csv(work_order: Optional[str] = Query(None, max_length=64), product_model: Optional[str] = Query(None, max_length=128)):
+    """The filtered records as CSV (5D, Q19 B): every column except the raw log."""
+    import csv
+    import io
+    where, params = _scope(work_order, product_model, None)
+    rows = db.rows(f"SELECT {EXPORT_COLUMNS} FROM test_record {where} ORDER BY test_time, id", tuple(params))
+    buf = io.StringIO()
+    buf.write("\ufeff")
+    out = csv.writer(buf)
+    cols = [c.strip() for c in EXPORT_COLUMNS.split(",")]
+    out.writerow(cols)
+    for r in rows:
+        out.writerow([r.get(c) for c in cols])
+    name = f"test_record_{(work_order or 'all').replace('/', '_')}.csv"
+    return Response(content=buf.getvalue().encode("utf-8"), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @router.delete("/records/{record_id}")

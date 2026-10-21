@@ -15,7 +15,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import Response
 
 from errors import not_found, Msg
-from services import analytics, fail_classify, fail_disposition, stats, today, wo_notes, wo_status
+from services import analytics, fail_classify, fail_disposition, forecast, stats, wo_notes, wo_status
 
 router = APIRouter(tags=["analytics"])
 
@@ -129,10 +129,10 @@ def overview(date_from: Optional[str] = iso_date(), date_to: Optional[str] = iso
     return data
 
 
-@router.get("/api/today")
-def today_page(day: Optional[str] = iso_date()) -> dict[str, Any]:
-    """The Today page (5C): one calendar day of the line (default today, test-station clock)."""
-    data = today.today(day)
+@router.get("/api/forecast")
+def forecast_view(work_order: Optional[str] = Query(None, max_length=64), product_model: Optional[str] = Query(None, max_length=128)) -> dict[str, Any]:
+    """The Trend page's Forecast view: a work order's completion, or this week's / month's output (rules, no LLM)."""
+    data = forecast.forecast(_opt(work_order), _opt(product_model))
     data["refreshed_at"] = stats.refreshed_at()
     return data
 

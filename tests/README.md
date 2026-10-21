@@ -52,13 +52,28 @@ LLM budget (2026-10-21):
 |---|---|
 | `python3 tests/acceptance_llm_budget.py [BASE]` | The legacy AI report carousel is refused (410) and the legacy summary serves the stored report without an LLM call; opening an old report queues nothing; the legacy page has no AI report menu item or carousel step; AI-worded notes only for red / amber work orders; `/api/llm-usage` counts calls by purpose. |
 
-Phase 5C (Today page, FAIL disposition):
+Phase 5C (FAIL disposition; its Today page was removed on 2026-10-21):
 
 | Command | What it does |
 |---|---|
 | `python3 tests/unit_fail_actions.py` | The next-step and disposition rules (`services/fail_actions.py`, no database): retest first, bursts → check the station, repeated FAILs → RD, RD's own instruction wins, automatic states after a later PASS / FAIL, which changes are valid. |
-| `python3 tests/acceptance_phase5c.py [BASE]` | The Today page's numbers equal the Trend / Fail List endpoints for the same day (10/01 normal, 01/13 with FAILs), the banner, the day switch; the Fail List's counts and pending / handled views; dispositions (401, validation, 404 / 409 for PASS runs and FAILs closed by a retest, set → counted → history → back to open, no row left); the next step of the 15 units still failing; the Settings idle warning. Reads two record ids with `docker exec` (PSQL_CONTAINER). |
-| `python3 tests/e2e_phase5c.py [BASE] [OUT_DIR]` | Browser: Today at 1920×1080 without scrolling (no tests yet, 10/01, 01/13 in 中文, light theme), day switch, work-order chips; the TV address `?tv=1` rotating Today ↔ Trend; the Fail List's views, tiles, next steps and detail window signed out and as RD (set and put back); role landing; the detail page's FAIL table; the Settings field. About two minutes. |
+| `python3 tests/acceptance_phase5c.py [BASE]` | The Fail List's counts and pending / handled views; dispositions (401, validation, 404 / 409 for PASS runs and FAILs closed by a retest, set → counted → history → back to open, no row left); the next step of the 15 units still failing; the working days in Settings; `/api/today` is gone. Reads two record ids with `docker exec` (PSQL_CONTAINER). |
+| `python3 tests/e2e_phase5c.py [BASE] [OUT_DIR]` | Browser: home = Trend, no Today in the menu; the Fail List's views, tiles, next steps and detail window signed out and as RD (set and put back); role landing; the detail page's FAIL table; the Settings working days. |
+
+Trend page Forecast view (2026-10-21):
+
+| Command | What it does |
+|---|---|
+| `python3 tests/unit_forecast_rules.py` | The forecast arithmetic (`services/forecast_rules.py`, no database): remaining share of today, working days to a date, working time between two moments, the finish time across nights and weekends, the recent pace, the last working days. |
+| `python3 tests/acceptance_forecast.py [BASE]` | Output forecast against the Trend page's own numbers (this week / month so far, last month, the 10-working-day average, projected = done + average × days left), one product, the date range not applying; a work order's completion without a plan, with plan 800 (remaining, finish inside working hours, projection up to the plan) and 300 (reached). Sets and clears the plan of 5101-260820009. |
+| `python3 tests/e2e_forecast.py [BASE] [OUT_DIR]` | Browser: the Trend / Forecast switch, the latest work order's completion and the all-data output forecast at 1080p without scrolling, 中文, the TV rotation Trend ↔ Forecast (`?tv=1`). About a minute and a half. |
+
+Phase 5D (upload wizard, DB Maintenance):
+
+| Command | What it does |
+|---|---|
+| `python3 tests/acceptance_phase5d.py [BASE] <sample.zip>` | `/validate` offers the stored plan (an earlier batch's, then the administrator's), the batch reading against the product's history (rules; the AI wording on request, decimals kept whole), DB Maintenance's impact preview for a record / batch / work order, CSV export, batch undo; the row count is back to where it was. |
+| `tests/e2e_phase4.py`, `tests/boundary_upload_ui.py` | Also cover the wizard (the same element ids; a refused forced upload returns to step 2 with the server's error). |
 
 Phase 5F-2 (Advanced Analysis, RD):
 

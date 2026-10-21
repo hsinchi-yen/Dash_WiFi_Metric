@@ -25,8 +25,8 @@ DEFAULTS: dict[str, Any] = {
     "yield_warn": config.YIELD_WARN,     # ≥ this → amber, below → red
     "work_start": "07:00",               # single shift (Q3): the hours the line normally tests
     "work_end": "19:00",
+    "work_days": [1, 2, 3, 4, 5],        # ISO weekdays the line works (forecasts count only these); Monday = 1
     "active_minutes": 120,               # a test within this many minutes → "in progress"
-    "idle_warn_minutes": 30,             # Today page: no new test for this long during working hours → amber
     "done_idle_hours": 24,               # no new test for this long → "done" (the final report is written then)
     "fail_streak": 3,                    # this many different units failing in a row → flag
     "tp_drop_pct": 20,                   # median throughput this far below the product's usual → flag
@@ -34,7 +34,7 @@ DEFAULTS: dict[str, Any] = {
     "uph_targets": {},                   # product → units per hour; unset = the product's history median
 }
 
-INT_RANGES = {"active_minutes": (10, 1440), "idle_warn_minutes": (5, 600), "done_idle_hours": (1, 720), "fail_streak": (2, 50),
+INT_RANGES = {"active_minutes": (10, 1440), "done_idle_hours": (1, 720), "fail_streak": (2, 50),
               "tp_drop_pct": (5, 90), "behind_pct": (5, 90)}
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
@@ -103,6 +103,11 @@ def validate(changes: dict[str, Any], current: dict[str, Any]) -> tuple[dict[str
                 errors[key] = Msg(f"請輸入 {lo} 到 {hi} 之間的整數。", f"Enter a whole number from {lo} to {hi}.")
                 continue
             merged[key] = value
+        elif key == "work_days":
+            if not isinstance(value, list) or not value or any(isinstance(d, bool) or not isinstance(d, int) or not 1 <= d <= 7 for d in value):
+                errors[key] = Msg("請至少選一個上班日。", "Choose at least one working day.")
+                continue
+            merged[key] = sorted(set(value))
         elif key == "uph_targets":
             if not isinstance(value, dict):
                 errors[key] = Msg("格式不正確。", "Invalid format.")

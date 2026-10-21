@@ -104,7 +104,7 @@ check("search by SN", srch["total"] == 1 and srch["items"][0]["sn"] == "51312633
 mac = srch["items"][0]["wifi_mac"]
 check("search by MAC", get("/api/rd/fails", search=mac)["total"] >= 1)
 day = get("/api/rd/fails", date_from="2026-01-13", date_to="2026-01-13")
-check("date range: 01/13 = 44 FAIL runs (as the Today page)", day["total"] == 44, day["total"])
+check("date range: 01/13 = 44 FAIL runs", day["total"] == 44, day["total"])
 wo = get("/api/rd/fails", work_order="5101-260102014")
 check("work order filter: 74 FAIL runs of 5101-260102014", wo["total"] == 74, wo["total"])
 by_mbps = get("/api/rd/fails", category="WIFI_TP_LOW_24G", sort="mbps", page_size=20)["items"]

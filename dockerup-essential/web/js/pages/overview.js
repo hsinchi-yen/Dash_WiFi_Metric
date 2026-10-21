@@ -1,11 +1,14 @@
-// Dashboard: the PASS / FAIL split, the yield and six numbers on top; four charts below
-// (yield trend, hourly output during working hours, units per month, throughput), from GET /api/overview.
+// Trend page (the former Dashboard), two views switched at the top (and in turn on the TV):
+//   Trend (#overview): the PASS / FAIL split, the yield and six numbers on top; four charts below (yield trend, hourly
+//   output during working hours, units per month, throughput), from GET /api/overview;
+//   Forecast (#overview?view=forecast): pages/forecast.js — the work order's completion, or the week's / month's output.
 import { apiGet } from '../core/api.js';
 import * as charts from '../core/charts.js';
 import { bucketLabels, esc, fmtInt, fmtNum, fmtPct, yieldLevel } from '../core/format.js';
 import { t } from '../core/i18n.js';
 import { queryString } from '../core/scope.js';
-import { $ } from '../core/ui.js';
+import { $, $$ } from '../core/ui.js';
+import * as forecast from './forecast.js';
 
 let seq = 0;
 const NUMBER_IDS = ['#ovYield', '#ovUnits', '#ovPass', '#ovFail', '#ovRetry', '#ovAvg24', '#ovAvg5'];
@@ -150,7 +153,24 @@ export function renderBands(canvasId, bands, colorKey) {
     }));
 }
 
+/** 'trend' or 'forecast', from the address (#overview?view=forecast). */
+export function currentView() {
+    return new URLSearchParams(location.hash.split('?')[1] || '').get('view') === 'forecast' ? 'forecast' : 'trend';
+}
+
+function showView(view) {
+    $$('#page-overview [data-ov-view]').forEach(el => { el.hidden = el.dataset.ovView !== view; });
+    $('#page-overview').classList.toggle('view-forecast', view === 'forecast');
+    $$('#ovViewSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === view)));
+    const title = view === 'forecast' ? t('fc.title') : t('page.overview');
+    $('#pageTitle').textContent = title;
+    document.title = `${title} · ${t('app.title')}`;
+}
+
 async function load(app) {
+    const view = currentView();
+    showView(view);
+    if (view === 'forecast') { await forecast.load(app); return; }
     const mine = ++seq;
     try {
         const data = await apiGet(`/api/overview${queryString(app.params())}`);
@@ -179,4 +199,10 @@ async function load(app) {
     }
 }
 
-export default { id: 'overview', scoped: true, load };
+function init() {
+    $$('#ovViewSeg button').forEach(b => b.addEventListener('click', () => {
+        location.hash = b.dataset.view === 'forecast' ? 'overview?view=forecast' : 'overview';
+    }));
+}
+
+export default { id: 'overview', scoped: true, init, load, onLangChange: () => { if (currentView() === 'forecast') forecast.onLangChange(); } };

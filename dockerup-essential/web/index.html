@@ -33,7 +33,6 @@
     </div>
     <nav class="nav" data-i18n-aria="nav.aria">
         <div class="nav-label" data-i18n="nav.groupOverview"></div>
-        <a class="nav-item" href="#today" data-page="today"><span class="nav-icon">🏭</span><span data-i18n="nav.today"></span></a>
         <a class="nav-item" href="#overview" data-page="overview"><span class="nav-icon">📊</span><span data-i18n="nav.overview"></span></a>
         <a class="nav-item" href="#workorders" data-page="workorders"><span class="nav-icon">📋</span><span data-i18n="nav.workorders"></span></a>
         <a class="nav-item" href="#fails" data-page="fails"><span class="nav-icon">⚠️</span><span data-i18n="nav.fails"></span></a>
@@ -72,6 +71,10 @@
         <div class="page-head">
             <h1 class="page-title" id="pageTitle"></h1>
             <span class="page-scope" id="pageScope"></span>
+            <div class="seg" role="group" id="ovViewSeg" data-i18n-aria="fc.viewAria" hidden>
+                <button type="button" data-view="trend" data-i18n="fc.viewTrend"></button>
+                <button type="button" data-view="forecast" data-i18n="fc.viewForecast"></button>
+            </div>
         </div>
         <div class="topbar-spacer"></div>
         <div class="filters" id="filterBar" hidden>
@@ -98,43 +101,9 @@
 
     <div class="content">
 
-    <!-- ─── Today (5C, the home page and half of the TV rotation) ─── -->
-    <section class="page" id="page-today" hidden>
-        <div class="card td-banner light-none" id="tdBanner">
-            <div class="td-banner-top">
-                <span class="td-dot"></span>
-                <span class="td-light" id="tdLight"></span>
-                <span class="td-reason" id="tdReason"></span>
-                <span class="spacer"></span>
-                <span class="td-date" id="tdDate"></span>
-                <span class="td-daynav">
-                    <button class="btn small ghost" type="button" id="btnTdPrev" data-i18n-aria="td.prevDay">◀</button>
-                    <button class="btn small ghost" type="button" id="btnTdToday" data-i18n="td.backToday" hidden></button>
-                    <button class="btn small ghost" type="button" id="btnTdNext" data-i18n-aria="td.nextDay">▶</button>
-                </span>
-            </div>
-            <div class="td-more" id="tdMore"></div>
-            <div class="td-wos" id="tdWos"></div>
-        </div>
-        <div class="td-numbers">
-            <div class="td-num" id="tdUnits"><div class="label" data-i18n="td.units"></div><div class="value">—</div><div class="sub"></div></div>
-            <div class="td-num" id="tdYield"><div class="label" data-i18n="td.yield"></div><div class="value">—</div><div class="sub"></div></div>
-            <div class="td-num" id="tdPending"><div class="label" data-i18n="td.pending"></div><div class="value">—</div><div class="sub"></div></div>
-            <div class="td-num" id="tdHour"><div class="label" data-i18n="td.hour"></div><div class="value">—</div><div class="sub"></div></div>
-            <div class="td-num" id="tdLast"><div class="label" data-i18n="td.last"></div><div class="value">—</div><div class="sub"></div></div>
-            <div class="td-num" id="tdTp"><div class="label" data-i18n="td.tp"></div><div class="value">—</div><div class="sub"></div></div>
-        </div>
-        <div class="ov-charts">
-            <div class="card"><div class="card-head"><div class="card-title" data-i18n="td.trend"></div><div class="card-note" id="tdTrendNote"></div></div><div class="chart-box"><canvas id="chTdTrend"></canvas></div></div>
-            <div class="card"><div class="card-head"><div class="card-title" data-i18n="td.hourly"></div><div class="card-note" id="tdHourlyNote"></div></div><div class="chart-box"><canvas id="chTdHourly"></canvas></div></div>
-            <div class="card"><div class="card-head"><div class="card-title" data-i18n="td.fails"></div><div class="card-note" id="tdFailNote"></div></div><div class="chart-box"><canvas id="chTdFails"></canvas></div></div>
-            <div class="card"><div class="card-head"><div class="card-title" data-i18n="ov.monthly"></div><div class="card-note" id="tdMonthlyNote"></div></div><div class="chart-box"><canvas id="chTdMonthly"></canvas></div></div>
-        </div>
-    </section>
-
     <!-- ─── Trend (the former Dashboard) ─── -->
     <section class="page" id="page-overview" hidden>
-        <div class="ov-numbers">
+        <div class="ov-numbers" data-ov-view="trend">
             <div class="ov-split">
                 <div class="label" data-i18n="ov.split"></div>
                 <div class="ov-split-body">
@@ -154,7 +123,7 @@
             <div class="ov-num"><div class="label" data-i18n="ov.avg24"></div><div class="value" id="ovAvg24">—</div><div class="sub" data-i18n="ov.mbps"></div></div>
             <div class="ov-num"><div class="label" data-i18n="ov.avg5"></div><div class="value" id="ovAvg5">—</div><div class="sub" data-i18n="ov.mbps"></div></div>
         </div>
-        <div class="ov-charts">
+        <div class="ov-charts" data-ov-view="trend">
             <div class="card"><div class="card-head"><div class="card-title" data-i18n="ov.trend"></div><div class="card-note" id="ovTrendNote"></div></div><div class="chart-box"><canvas id="chOvTrend"></canvas></div></div>
             <div class="card"><div class="card-head"><div class="card-title" data-i18n="ov.hourly"></div><div class="card-note" id="ovHourlyNote"></div></div><div class="chart-box"><canvas id="chOvHourly"></canvas></div></div>
             <div class="card"><div class="card-head"><div class="card-title" data-i18n="ov.monthly"></div><div class="card-note" id="ovMonthlyNote"></div></div><div class="chart-box"><canvas id="chOvMonthly"></canvas></div></div>
@@ -165,6 +134,20 @@
                     <div><div class="chart-sub" data-i18n="rf.band5"></div><div class="chart-box"><canvas id="chOvTp5"></canvas></div></div>
                 </div>
             </div>
+        </div>
+        <!-- Forecast view (#overview?view=forecast): a work order's completion, or this week's / month's output -->
+        <div class="fc-note" id="fcNote" data-ov-view="forecast" hidden></div>
+        <div class="fc-numbers" data-ov-view="forecast" hidden>
+            <div class="td-num" id="fc1"><div class="label"></div><div class="value">—</div><div class="sub"></div></div>
+            <div class="td-num" id="fc2"><div class="label"></div><div class="value">—</div><div class="sub"></div></div>
+            <div class="td-num" id="fc3"><div class="label"></div><div class="value">—</div><div class="sub"></div></div>
+            <div class="td-num" id="fc4"><div class="label"></div><div class="value">—</div><div class="sub"></div></div>
+            <div class="td-num" id="fc5"><div class="label"></div><div class="value">—</div><div class="sub"></div></div>
+            <div class="td-num" id="fc6"><div class="label"></div><div class="value">—</div><div class="sub"></div></div>
+        </div>
+        <div class="fc-charts" data-ov-view="forecast" hidden>
+            <div class="card"><div class="card-head"><div class="card-title" id="fcChart1Title"></div><div class="card-note" id="fcChart1Note"></div></div><div class="chart-box"><canvas id="chFc1"></canvas></div></div>
+            <div class="card"><div class="card-head"><div class="card-title" id="fcChart2Title"></div><div class="card-note" id="fcChart2Note"></div></div><div class="chart-box"><canvas id="chFc2"></canvas></div></div>
         </div>
     </section>
 
@@ -304,7 +287,11 @@
         <div class="card" id="twDenied" hidden><div class="state-msg" data-i18n="tw.denied"></div></div>
         <div class="stack" id="twPanel" hidden>
             <div class="notice" data-i18n="tw.intro"></div>
-            <div class="card">
+            <div class="tabs" role="tablist">
+                <button class="tab" role="tab" type="button" data-tw-tab="records" aria-selected="true" data-i18n="tw.tabRecords"></button>
+                <button class="tab" role="tab" type="button" data-tw-tab="batches" aria-selected="false" data-i18n="tw.tabBatches"></button>
+            </div>
+            <div class="card" data-tw-view="records">
                 <div class="toolbar mb">
                     <label class="muted" for="twProduct" data-i18n="wo.col.product"></label>
                     <select class="select" id="twProduct"></select>
@@ -313,6 +300,7 @@
                     <label class="muted" for="twLimit" data-i18n="tw.limit"></label>
                     <select class="select" id="twLimit"><option>100</option><option selected>500</option><option>1000</option><option>2000</option></select>
                     <button class="btn small" type="button" id="btnTwReload" data-i18n="fresh.refresh"></button>
+                    <button class="btn small" type="button" id="btnTwExport" data-i18n="tw.export"></button>
                     <span class="spacer"></span>
                     <span class="muted" id="twCount"></span>
                     <button class="btn danger" type="button" id="btnTwDeleteWo" data-i18n="tw.deleteWo"></button>
@@ -323,9 +311,25 @@
                             <th data-i18n="tw.col.id"></th><th data-i18n="fails.col.time"></th><th data-i18n="wo.col.wo"></th><th data-i18n="wo.col.product"></th>
                             <th>SN</th><th data-i18n="fails.col.result"></th><th>WiFi</th><th>BT</th>
                             <th class="num" data-i18n="fails.col.tp24"></th><th class="num" data-i18n="fails.col.tp5"></th>
-                            <th data-i18n="tw.col.source"></th><th data-i18n="tw.col.upload"></th><th data-i18n="tw.col.actions"></th>
+                            <th data-i18n="tw.col.source"></th><th data-i18n="tw.col.upload"></th><th></th>
                         </tr></thead>
                         <tbody id="twRows"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card" data-tw-view="batches" hidden>
+                <div class="toolbar mb">
+                    <span class="muted small-text" data-i18n="tw.batchesNote"></span>
+                    <span class="spacer"></span>
+                    <button class="btn small" type="button" id="btnTwBatchesReload" data-i18n="fresh.refresh"></button>
+                </div>
+                <div class="table-wrap scroll">
+                    <table>
+                        <thead><tr>
+                            <th data-i18n="lu.col.time2"></th><th data-i18n="lu.uploader"></th><th data-i18n="wo.col.wo"></th><th data-i18n="wo.col.product"></th>
+                            <th data-i18n="lu.col.source"></th><th data-i18n="lu.col.result"></th><th data-i18n="lu.col.status"></th><th></th>
+                        </tr></thead>
+                        <tbody id="twBatchRows"></tbody>
                     </table>
                 </div>
             </div>
@@ -344,8 +348,42 @@
         </div>
         <div class="card" id="luDenied" hidden><div class="state-msg" data-i18n="lu.deniedRd"></div></div>
         <div class="stack" id="luPanel" hidden>
-            <div class="notice" data-i18n="lu.howto"></div>
-            <div class="card">
+            <!-- 5D wizard: one step at a time; a finished step folds into one line -->
+            <ol class="lu-steps" id="luSteps">
+                <li data-step="1"><span class="lu-num">1</span><span data-i18n="lu.stepShort1"></span></li>
+                <li data-step="2"><span class="lu-num">2</span><span data-i18n="lu.stepShort2"></span></li>
+                <li data-step="3"><span class="lu-num">3</span><span data-i18n="lu.stepShort3"></span></li>
+                <li class="lu-help"><details><summary data-i18n="lu.helpTitle"></summary><div class="notice mt-s" data-i18n="lu.howto"></div></details></li>
+            </ol>
+
+            <div class="card lu-summary" id="luSummary" hidden>
+                <div class="toolbar">
+                    <span class="lu-done">✓</span>
+                    <strong id="luSummaryText"></strong>
+                    <span class="muted small-text" id="luSummaryFacts"></span>
+                    <span class="spacer"></span>
+                    <button class="btn small" type="button" id="btnLuReset" data-i18n="lu.reset"></button>
+                </div>
+                <details class="mt-s" id="luFactsBox">
+                    <summary data-i18n="lu.factsMore"></summary>
+                    <div id="luFacts" hidden>
+                        <div class="tiles my" id="luFactGrid"></div>
+                        <div class="notice warn" id="luInferred" hidden></div>
+                        <details id="luIgnoredBox" hidden>
+                            <summary id="luIgnoredSummary"></summary>
+                            <div class="table-wrap mt-s detail-table">
+                                <table>
+                                    <thead><tr><th data-i18n="lu.col.file"></th><th data-i18n="lu.col.reason"></th></tr></thead>
+                                    <tbody id="luIgnoredRows"></tbody>
+                                </table>
+                            </div>
+                        </details>
+                    </div>
+                </details>
+                <div class="muted small-text mt-s" id="luConfirmedLine" hidden></div>
+            </div>
+
+            <div class="card" id="luStep1">
                 <div class="card-title mb"><span class="lu-num">1</span><span data-i18n="lu.step1"></span></div>
                 <div class="lu-sources">
                     <div class="drop" id="luDrop" tabindex="0" role="button" data-i18n-aria="lu.dropAria">
@@ -359,59 +397,51 @@
                     </div>
                 </div>
                 <div class="status-line" id="luAnalyzeStatus" aria-live="polite"></div>
-                <div id="luFacts" hidden>
-                    <div class="tiles my" id="luFactGrid"></div>
-                    <div class="notice warn" id="luInferred" hidden></div>
-                    <details id="luIgnoredBox" hidden>
-                        <summary id="luIgnoredSummary"></summary>
-                        <div class="table-wrap mt-s detail-table">
-                            <table>
-                                <thead><tr><th data-i18n="lu.col.file"></th><th data-i18n="lu.col.reason"></th></tr></thead>
-                                <tbody id="luIgnoredRows"></tbody>
-                            </table>
-                        </div>
-                    </details>
-                </div>
             </div>
 
-            <div class="card" id="luStepConfirm" hidden>
-                <div class="card-title mb"><span class="lu-num">2</span><span data-i18n="lu.step2"></span></div>
-                <div class="toolbar mb">
-                    <strong id="luModeLabel"></strong>
-                    <span class="muted" id="luModeHint"></span>
-                    <span class="spacer"></span>
-                    <button class="btn small" type="button" id="btnLuMode" hidden></button>
-                </div>
-                <div id="luChatPanel" hidden>
-                    <div class="chat">
-                        <div class="chat-log" id="luChatLog" aria-live="polite"></div>
-                        <div class="chips chat-chips" id="luChips" hidden></div>
-                        <div class="chat-input">
-                            <input class="input" id="luChatInput" maxlength="500" autocomplete="off" data-i18n-placeholder="lu.chatPh">
-                            <button class="btn primary" type="button" id="btnLuChatSend" data-i18n="lu.send"></button>
+            <div class="lu-confirm" id="luStepConfirm" hidden>
+                <div class="card">
+                    <div class="card-title mb"><span class="lu-num">2</span><span data-i18n="lu.step2"></span></div>
+                    <div class="form-grid" id="luFormPanel">
+                        <div class="field">
+                            <label for="luProduct"><span data-i18n="lu.product"></span> *</label>
+                            <select class="select" id="luProduct"></select>
+                            <input class="input" id="luProductNew" autocomplete="off" spellcheck="false" data-i18n-placeholder="lu.productNewPh" hidden>
                         </div>
+                        <div class="field"><label for="luWo"><span data-i18n="lu.wo"></span> *</label><input class="input" id="luWo" autocomplete="off" spellcheck="false"><div class="field-hint" data-i18n="lu.woHint"></div></div>
+                        <div class="field"><label for="luQty"><span data-i18n="lu.qty"></span> *</label><input class="input" id="luQty" inputmode="numeric" autocomplete="off" data-i18n-placeholder="lu.qtyPh">
+                            <div class="field-hint" id="luPlanHint" hidden></div></div>
                     </div>
-                    <div class="muted num my" id="luExtract"></div>
-                </div>
-                <div class="form-grid" id="luFormPanel">
-                    <div class="field">
-                        <label for="luProduct"><span data-i18n="lu.product"></span> *</label>
-                        <select class="select" id="luProduct"></select>
-                        <input class="input" id="luProductNew" autocomplete="off" spellcheck="false" data-i18n-placeholder="lu.productNewPh" hidden>
+                    <ul class="issues" id="luIssues" aria-live="polite"></ul>
+                    <div id="luAlign" hidden>
+                        <div class="muted small-text mb-s" data-i18n="lu.align"></div>
+                        <div class="tiles mb" id="luAlignGrid"></div>
                     </div>
-                    <div class="field"><label for="luWo"><span data-i18n="lu.wo"></span> *</label><input class="input" id="luWo" autocomplete="off" spellcheck="false"><div class="field-hint" data-i18n="lu.woHint"></div></div>
-                    <div class="field"><label for="luQty"><span data-i18n="lu.qty"></span> *</label><input class="input" id="luQty" inputmode="numeric" autocomplete="off" data-i18n-placeholder="lu.qtyPh"></div>
+                    <label class="ack" id="luAckRow" hidden><input type="checkbox" id="luAck"> <span data-i18n="lu.ack"></span></label>
+                    <div class="toolbar">
+                        <button class="btn primary" type="button" id="btnLuUpload" data-i18n="lu.upload" disabled></button>
+                        <button class="btn" type="button" id="btnLuBack" data-i18n="lu.back"></button>
+                    </div>
                 </div>
-                <ul class="issues" id="luIssues" aria-live="polite"></ul>
-                <div id="luAlign" hidden>
-                    <div class="muted small-text mb-s" data-i18n="lu.align"></div>
-                    <div class="tiles mb" id="luAlignGrid"></div>
-                </div>
-                <label class="ack" id="luAckRow" hidden><input type="checkbox" id="luAck"> <span data-i18n="lu.ack"></span></label>
-                <div class="toolbar">
-                    <button class="btn primary" type="button" id="btnLuUpload" data-i18n="lu.upload" disabled></button>
-                    <button class="btn" type="button" id="btnLuReset" data-i18n="lu.reset"></button>
-                </div>
+                <aside class="card lu-assist" id="luAssist">
+                    <div class="card-head">
+                        <div class="card-title" data-i18n="lu.assistTitle"></div>
+                        <button class="btn small" type="button" id="btnLuMode" hidden></button>
+                    </div>
+                    <div class="muted small-text mb-s"><strong id="luModeLabel"></strong> <span id="luModeHint"></span></div>
+                    <ul class="lu-checks" id="luAssistChecks"></ul>
+                    <div id="luChatPanel" hidden>
+                        <div class="chat">
+                            <div class="chat-log" id="luChatLog" aria-live="polite"></div>
+                            <div class="chips chat-chips" id="luChips" hidden></div>
+                            <div class="chat-input">
+                                <input class="input" id="luChatInput" maxlength="500" autocomplete="off" data-i18n-placeholder="lu.chatPh">
+                                <button class="btn primary" type="button" id="btnLuChatSend" data-i18n="lu.send"></button>
+                            </div>
+                        </div>
+                        <div class="muted num my" id="luExtract"></div>
+                    </div>
+                </aside>
             </div>
 
             <div class="card" id="luStepProgress" hidden>
@@ -433,12 +463,20 @@
                         </table>
                     </div>
                 </details>
-                <div class="toolbar mt" id="luItemsRow" hidden>
-                    <button class="btn small" type="button" id="btnLuItemsCsv" data-i18n="lu.items.csv"></button>
-                    <button class="btn small" type="button" id="btnLuItemsTxt" data-i18n="lu.items.txt"></button>
+                <div class="lu-reading mt" id="luReading" hidden>
+                    <div class="card-head"><div class="card-title" data-i18n="lu.readTitle"></div>
+                        <button class="btn small" type="button" id="btnLuReadAi" data-i18n="lu.readAi" hidden></button></div>
+                    <ul class="lu-checks" id="luReadPoints"></ul>
+                    <div class="lu-read-ai" id="luReadAiText" hidden></div>
                 </div>
                 <div class="toolbar mt">
+                    <a class="btn primary" id="btnLuViewWo" href="#workorders" hidden></a>
                     <button class="btn" type="button" id="btnLuNext" data-i18n="lu.next" hidden></button>
+                    <span class="spacer"></span>
+                    <div id="luItemsRow" hidden>
+                        <button class="btn small" type="button" id="btnLuItemsCsv" data-i18n="lu.items.csv"></button>
+                        <button class="btn small" type="button" id="btnLuItemsTxt" data-i18n="lu.items.txt"></button>
+                    </div>
                     <button class="btn danger" type="button" id="btnLuRevert" data-i18n="lu.revert" hidden></button>
                 </div>
             </div>
@@ -454,9 +492,9 @@
                 <div class="table-wrap">
                     <table>
                         <thead><tr>
-                            <th data-i18n="lu.col.time2"></th><th data-i18n="wo.col.wo"></th><th data-i18n="wo.col.product"></th><th class="num" data-i18n="lu.col.planned"></th>
-                            <th data-i18n="lu.col.source"></th><th class="num" data-i18n="lu.col.new"></th><th class="num" data-i18n="lu.col.skip"></th>
-                            <th class="num" data-i18n="lu.col.fail"></th><th data-i18n="lu.col.status"></th><th data-i18n="lu.uploader"></th><th></th>
+                            <th data-i18n="lu.col.time2"></th><th data-i18n="wo.col.wo"></th><th data-i18n="wo.col.product"></th>
+                            <th data-i18n="lu.col.source"></th><th data-i18n="lu.col.result"></th><th data-i18n="lu.col.status"></th>
+                            <th data-i18n="lu.uploader" id="luHistoryWhoHead"></th><th></th>
                         </tr></thead>
                         <tbody id="luHistoryRows"></tbody>
                     </table>
@@ -879,13 +917,12 @@
                         <div class="field"><label for="setWorkEnd" data-i18n="set.workEnd"></label><input class="input" id="setWorkEnd" name="work_end" type="time"></div>
                     </div>
                     <div class="field-hint mb" data-i18n="set.workHint"></div>
+                    <div class="field"><label data-i18n="set.workDays"></label><div class="set-days" id="setWorkDays"></div></div>
                     <div class="set-fields">
                         <div class="field"><label for="setActive" data-i18n="set.activeMinutes"></label><input class="input" id="setActive" name="active_minutes" type="number" step="1" min="10" max="1440" inputmode="numeric"></div>
                         <div class="field"><label for="setDone" data-i18n="set.doneIdleHours"></label><input class="input" id="setDone" name="done_idle_hours" type="number" step="1" min="1" max="720" inputmode="numeric"></div>
                     </div>
                     <div class="field-hint" data-i18n="set.doneHint"></div>
-                    <div class="field mt-s"><label for="setIdleWarn" data-i18n="set.idleWarn"></label><input class="input" id="setIdleWarn" name="idle_warn_minutes" type="number" step="1" min="5" max="600" inputmode="numeric"></div>
-                    <div class="field-hint" data-i18n="set.idleWarnHint"></div>
                 </div>
                 <div class="card">
                     <div class="card-title mb" data-i18n="set.alerts"></div>

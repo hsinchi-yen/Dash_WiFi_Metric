@@ -8,7 +8,6 @@ import { applyI18n, getLang, initLang, onLangChange, setLang, t } from './core/i
 import { presetRange, scopeKey, scopeParams } from './core/scope.js';
 import { $, $$, initEscapeClose, initFormModal, toast, closeFormModal } from './core/ui.js';
 import report from './report.js';
-import today from './pages/today.js';
 import overview from './pages/overview.js';
 import workorders from './pages/workorders.js';
 import fails, { closeFailDetail } from './pages/fails.js';
@@ -22,13 +21,14 @@ import settings from './pages/settings.js';
 import wodetail from './pages/wodetail.js';
 import rd from './pages/rd.js';
 
-const PAGES = [today, overview, workorders, fails, rf, production, logupload, products, dbtweak, accounts, settings, wodetail, rd];
+const PAGES = [overview, workorders, fails, rf, production, logupload, products, dbtweak, accounts, settings, wodetail, rd];
 const byId = Object.fromEntries(PAGES.map(p => [p.id, p]));
-// The line TV (Q1): Today ↔ Trend. A TV address with ?tv=1 rotates at once instead of after 5 idle minutes.
+// The line TV: the Trend page's two views, Trend ↔ Forecast. A TV address with ?tv=1 rotates at once instead of
+// after 5 idle minutes.
 const TV = new URLSearchParams(location.search).get('tv') === '1';
 const IDLE_MS = TV ? 0 : 5 * 60 * 1000;
 const ROTATE_MS = 30 * 1000;
-const ROTATION = ['today', 'overview'];
+const ROTATION = ['overview', 'overview?view=forecast'];
 
 export const app = {
     page: null,
@@ -52,12 +52,12 @@ export const app = {
 };
 
 /* ─── Routing ─── */
-/** Where an address without a page goes: the TV and anyone signed out → Today; signed in, by role
- *  (administrator → Trend, uploader → Log Upload, RD → Advanced Analysis). */
+/** Where an address without a page goes: the TV, anyone signed out and the administrator → Trend;
+ *  uploaders → Log Upload, RD → Advanced Analysis. */
 function landingPage() {
     const user = auth.currentUser();
-    if (!user || TV) return 'today';
-    return { admin: 'overview', uploader: 'logupload', rd: 'rd' }[user.role] || 'today';
+    if (!user || TV) return 'overview';
+    return { uploader: 'logupload', rd: 'rd' }[user.role] || 'overview';
 }
 
 function pageFromHash() {
@@ -76,6 +76,7 @@ async function show(id) {
     $('#pageTitle').textContent = t(`page.${id}`);
     document.title = `${t(`page.${id}`)} · ${t('app.title')}`;
     $('#filterBar').hidden = !page.scoped;
+    $('#ovViewSeg').hidden = id !== 'overview';
     updateScopeLabel();
     await loadPage();
 }
@@ -313,7 +314,7 @@ function renderAuth(user, reason) {
     PAGES.forEach(p => p.onAuthChange?.(user, reason, app));
 }
 
-/* ─── Idle rotation: Today ↔ Trend every 30 s after 5 min idle (at once with ?tv=1); filters untouched ─── */
+/* ─── Idle rotation: Trend ↔ Forecast every 30 s after 5 min idle (at once with ?tv=1); filters untouched ─── */
 const idle = { last: Date.now() };
 
 function busy() {
@@ -326,9 +327,9 @@ function initIdleRotation() {
         window.addEventListener(ev, touch, { passive: true }));
     setInterval(() => {
         if (Date.now() - idle.last < IDLE_MS || busy() || document.hidden) return;
-        const i = ROTATION.indexOf(app.page?.id);
         if (app.page?.id === 'wo') return;   // a work-order detail page is being read: leave it where it is
-        const next = ROTATION[(i + 1) % ROTATION.length];
+        const here = location.hash.replace(/^#/, '') || (app.page?.id === 'overview' ? 'overview' : '');
+        const next = ROTATION[(ROTATION.indexOf(here) + 1) % ROTATION.length];
         if (location.hash !== `#${next}`) location.hash = next;
         else loadPage();
     }, ROTATE_MS);

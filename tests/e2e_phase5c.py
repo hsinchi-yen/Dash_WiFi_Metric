@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Browser pass for Phase 5C: the Today page (1080p without scrolling, both languages, the day switch, a red day),
-the home address and role landing, the TV rotation Today ↔ Trend (?tv=1), the Fail List's disposition views,
-next steps and FAIL detail window (signed out: read only; signed in: set and put back), the work-order detail's
-FAIL table, and the Settings field.
+"""Browser pass for Phase 5C: the home address and role landing, the Fail List's disposition views, next steps and
+FAIL detail window (signed out: read only; signed in: set and put back), the work-order detail's FAIL table, and the
+Settings working days. (The Today page was removed on 2026-10-21; tests/e2e_forecast.py covers the Trend page's
+Forecast view and the TV rotation.)
 
     python3 tests/e2e_phase5c.py [BASE] [OUT_DIR] [admin_user admin_pass]
 
 Needs the account test_rd (tests/acceptance_phase5f1.py creates it). The one disposition it sets is put back.
-Takes about two minutes (the rotation waits 30 s per step).
 """
 import os
 import re
@@ -48,65 +47,11 @@ with sync_playwright() as p:
     def no_scroll(pg):
         return pg.evaluate("document.documentElement.scrollHeight <= window.innerHeight + 1")
 
-    # ── Home: the Today page ──
+    # ── Home: the Trend page (the Today page was removed on 2026-10-21) ──
     page.goto(f"{BASE}/", wait_until="networkidle")
-    page.wait_for_selector("#page-today:not([hidden])", timeout=10000)
-    page.wait_for_timeout(1200)
-    check("the home address (no page) opens Today when signed out", page.inner_text("#pageTitle") == "Today", page.inner_text("#pageTitle"))
-    check("menu: Today first, the former Dashboard is now Trend",
-          page.locator(".nav-item").first.get_attribute("data-page") == "today" and page.locator(".nav-item[data-page='overview']").inner_text().strip().endswith("Trend"))
-    check("no tests yet today: the banner says so with the last test time", "No tests yet today" in page.inner_text("#tdLight")
-          and "Last test" in page.inner_text("#tdReason"), page.inner_text("#tdBanner")[:120])
-    check("Today fits 1920×1080 without scrolling", no_scroll(page))
-    shot("60_today_no_tests")
-
-    page.goto(f"{BASE}/#today?day=2026-10-01", wait_until="networkidle")
-    page.wait_for_timeout(1500)
-    check("10/01: green banner 'Normal' with the day's work order", "Normal" in page.inner_text("#tdLight") and "5101-260820009" in page.inner_text("#tdWos"))
-    check("10/01: six numbers (260 tested, 100.00% yield, 0 FAIL to handle, last hour 37 / 29, last test 16:59, 27.0 / 232.4 Mbps)",
-          page.inner_text("#tdUnits .value") == "260" and "100.00" in page.inner_text("#tdYield .value") and page.inner_text("#tdPending .value") == "0"
-          and re.sub(r"\s+", "", page.inner_text("#tdHour .value")) == "37/29" and page.inner_text("#tdLast .value") == "16:59"
-          and "232.4" in page.inner_text("#tdTp .value"),
-          [page.inner_text(f"#{i} .value") for i in ("tdUnits", "tdYield", "tdPending", "tdHour", "tdLast", "tdTp")])
-    check("10/01: four charts drawn (no message over any of them)",
-          page.locator("#page-today canvas").count() == 4 and page.locator("#page-today .chart-box .state-msg").count() == 1)   # FAIL Top: none in 7 days
-    check("10/01: FAIL Top says there was no FAIL in 7 days", "No FAIL in 7 days" in page.inner_text("#page-today"))
-    check("10/01 fits 1080p without scrolling", no_scroll(page))
-    shot("61_today_1001_en")
-    page.click("#btnTdPrev"); page.wait_for_timeout(1200)
-    check("◀ goes to the previous test day (09/30)", "day=2026-09-30" in page.url and "2026/09/30" in page.inner_text("#tdDate"), page.url)
-    page.click("#btnTdToday"); page.wait_for_timeout(1200)
-    check("'Today' goes back to today", page.url.endswith("#today") and page.locator("#btnTdToday").is_hidden())
-
-    zh = new_page("zh-TW")
-    zh.goto(f"{BASE}/#today?day=2026-01-13", wait_until="networkidle")
-    zh.wait_for_timeout(1500)
-    check("01/13 (中文): red banner 異常 with the red work order's note first", "異常" in zh.inner_text("#tdLight")
-          and "5101-251126008" in zh.inner_text("#tdReason"), zh.inner_text("#tdReason")[:80])
-    check("01/13: the other reasons as chips (second red work order, 4 FAIL to handle)", "5105-260102001" in zh.inner_text("#tdMore") and "4 台 FAIL 待處理" in zh.inner_text("#tdMore"))
-    check("01/13: FAIL to handle 4 in red, yield ▼ against 01/12", zh.inner_text("#tdPending .value") == "4"
-          and "lv-bad" in zh.get_attribute("#tdPending", "class") and "▼" in zh.inner_text("#tdYield .sub"))
-    check("01/13: FAIL Top bars for the day and 7 days", zh.locator("#chTdFails").count() == 1 and "近 7 天" in zh.inner_text("#tdFailNote"))
-    check("01/13 fits 1080p without scrolling", no_scroll(zh))
-    shot("62_today_0113_zh", zh)
-    zh.click("#btnTheme"); zh.wait_for_timeout(800)
-    shot("63_today_0113_zh_light", zh)
-    zh.click("#btnTheme")
-    zh.locator(".td-wo", has_text="5101-251126008").click()
-    zh.wait_for_selector("#page-wo:not([hidden])", timeout=10000)
-    zh.wait_for_function("document.querySelector('#wdWo').innerText.includes('5101-251126008')", timeout=10000)
-    check("a work order chip opens its detail page", "5101-251126008" in zh.inner_text("#wdWo"))
-    zh.close()
-
-    # ── TV rotation Today ↔ Trend (?tv=1: no idle wait) ──
-    tv = new_page("zh-TW")
-    tv.goto(f"{BASE}/?tv=1&lang=zh", wait_until="networkidle")
-    check("TV address opens Today", tv.inner_text("#pageTitle") == "今日")
-    tv.wait_for_function("location.hash === '#overview'", timeout=45000)
-    check("after 30 s the TV shows Trend", tv.inner_text("#pageTitle") == "趨勢")
-    tv.wait_for_function("location.hash === '#today'", timeout=45000)
-    check("and 30 s later Today again", tv.inner_text("#pageTitle") == "今日")
-    tv.close()
+    page.wait_for_selector("#page-overview:not([hidden])", timeout=10000)
+    check("the home address (no page) opens Trend when signed out", page.inner_text("#pageTitle") == "Trend", page.inner_text("#pageTitle"))
+    check("no Today in the menu", page.locator(".nav-item[data-page='today']").count() == 0 and page.locator(".nav-item").first.get_attribute("data-page") == "overview")
 
     # ── Fail List: disposition views, next steps, detail window ──
     page.goto(f"{BASE}/#fails", wait_until="networkidle")
@@ -140,7 +85,8 @@ with sync_playwright() as p:
     page.fill("#luUser", RD[0]); page.fill("#luPass", RD[1]); page.click("#btnLuLogin")
     page.wait_for_selector("#authBox:not([hidden])", timeout=10000)
     page.goto(f"{BASE}/", wait_until="networkidle"); page.wait_for_timeout(800)
-    check("role landing: RD on the home address lands on the Fail List", page.inner_text("#pageTitle") == "Fail List", page.inner_text("#pageTitle"))
+    check("role landing: RD on the home address lands on Advanced Analysis", page.inner_text("#pageTitle") == "Advanced Analysis", page.inner_text("#pageTitle"))
+    page.goto(f"{BASE}/#fails", wait_until="networkidle")
     page.select_option("#woSelect", "")
     page.wait_for_selector("#failRows [data-detail]", timeout=15000)
     sn = page.locator("#failRows [data-detail]").first.inner_text()
@@ -181,7 +127,8 @@ with sync_playwright() as p:
     page.fill("#setUser", ADMIN[0]); page.fill("#setPass", ADMIN[1]); page.click("#btnSetLogin")
     page.wait_for_selector("#setPanel:not([hidden])", timeout=10000)
     page.wait_for_timeout(800)
-    check("Settings shows the Today idle warning (30 min)", page.input_value("#setIdleWarn") == "30")
+    check("Settings shows the working days (Mon–Fri ticked)", page.locator("#setWorkDays input:checked").count() == 5
+          and not page.locator("#setWorkDays [data-day='6']").is_checked())
     page.goto(f"{BASE}/", wait_until="networkidle"); page.wait_for_timeout(800)
     check("role landing: the administrator lands on Trend", page.inner_text("#pageTitle") == "Trend", page.inner_text("#pageTitle"))
     page.click("#btnLogout")

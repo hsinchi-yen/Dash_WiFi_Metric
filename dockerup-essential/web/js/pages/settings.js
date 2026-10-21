@@ -6,8 +6,8 @@ import { esc, fmtInt, fmtNum, setThresholds } from '../core/format.js';
 import { t } from '../core/i18n.js';
 import { $, $$, toast } from '../core/ui.js';
 
-const NUMBER_FIELDS = ['yield_good', 'yield_warn', 'active_minutes', 'done_idle_hours', 'idle_warn_minutes', 'fail_streak', 'tp_drop_pct', 'behind_pct'];
-const INT_FIELDS = new Set(['active_minutes', 'done_idle_hours', 'idle_warn_minutes', 'fail_streak', 'tp_drop_pct', 'behind_pct']);
+const NUMBER_FIELDS = ['yield_good', 'yield_warn', 'active_minutes', 'done_idle_hours', 'fail_streak', 'tp_drop_pct', 'behind_pct'];
+const INT_FIELDS = new Set(['active_minutes', 'done_idle_hours', 'fail_streak', 'tp_drop_pct', 'behind_pct']);
 const TIME_FIELDS = ['work_start', 'work_end'];
 const st = { data: null };
 let appRef;
@@ -24,8 +24,12 @@ const field = name => $(`#setPanel [name="${name}"]`);
 
 function fillForm(values) {
     for (const name of [...NUMBER_FIELDS, ...TIME_FIELDS]) field(name).value = values[name] ?? '';
+    const days = new Set(values.work_days || []);
+    $('#setWorkDays').innerHTML = [1, 2, 3, 4, 5, 6, 7].map(d => `<label class="rd-check"><input type="checkbox" data-day="${d}"${days.has(d) ? ' checked' : ''}> ${esc(t(`rd.wd${d}`))}</label>`).join('');
     renderPreview();
 }
+
+const workDays = () => $$('#setWorkDays [data-day]').filter(c => c.checked).map(c => Number(c.dataset.day));
 
 function renderUph() {
     const tbody = $('#setUphRows');
@@ -50,6 +54,11 @@ function renderPreview() {
     $('#setPreview').innerHTML = sample.map(v => `<span class="badge ${level(v)}">${esc(v.toFixed(1))}%</span>`).join(' ');
 }
 
+/** The form's current number / time values (kept across a language switch). */
+function readNumbers() {
+    return Object.fromEntries([...NUMBER_FIELDS, ...TIME_FIELDS].map(n => [n, field(n).value]));
+}
+
 /** Only what differs from the stored settings. */
 function changes() {
     const cur = st.data.settings;
@@ -64,6 +73,8 @@ function changes() {
         const v = field(name).value;
         if (v && v !== cur[name]) out[name] = v;
     }
+    const days = workDays();
+    if (days.join(',') !== (cur.work_days || []).join(',')) out.work_days = days;
     const targets = {};
     let changedTarget = false;
     $$('#setUphRows .set-uph').forEach(input => {
@@ -108,7 +119,7 @@ async function save(e) {
     }
 }
 
-const PURPOSES = ['wo_note', 'wo_report', 'wo_answer', 'fail_category', 'upload_fields', 'upload_reply', 'old_report'];
+const PURPOSES = ['wo_note', 'wo_report', 'wo_answer', 'fail_category', 'upload_fields', 'upload_reply', 'upload_reading', 'rd_ask', 'old_report'];
 const purposeName = p => (PURPOSES.includes(p) ? t(`set.llm.p.${p}`) : t('set.llm.p.other'));
 
 async function loadUsage() {
@@ -158,5 +169,5 @@ async function load() {
 export default {
     id: 'settings', scoped: false, init, load,
     onAuthChange: () => { renderAccess(); if (appRef?.page?.id === 'settings' && auth.isAdmin()) loadSettings(); },
-    onLangChange: () => { if (st.data) renderUph(); },
+    onLangChange: () => { if (st.data) { renderUph(); const keep = workDays(); fillForm({ ...st.data.settings, ...readNumbers(), work_days: keep }); } },
 };

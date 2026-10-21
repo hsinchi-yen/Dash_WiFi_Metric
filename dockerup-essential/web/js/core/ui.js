@@ -57,10 +57,10 @@ export function toast(message, kind = '') {
 
 /* ─── Form dialog ───────────────────────────────────────────────────────────
    openFormModal({ title, desc, fields: [{ name, label, type, value, required,
-   autocomplete, hint, maxlength, options: [{ value, label }] (type 'select') }], submitLabel, onSubmit(values) → error text | null }) */
+   autocomplete, hint, maxlength, options: [{ value, label }] (type 'select') }], submitLabel, danger, onSubmit(values) → error text | null }) */
 const formState = { onSubmit: null, lastFocus: null };
 
-export function openFormModal({ title, desc = '', fields, submitLabel, onSubmit }) {
+export function openFormModal({ title, desc = '', fields, submitLabel, onSubmit, danger = false }) {
     formState.onSubmit = onSubmit;
     formState.lastFocus = document.activeElement;
     $('#formModalTitle').textContent = title;
@@ -102,6 +102,7 @@ export function openFormModal({ title, desc = '', fields, submitLabel, onSubmit 
     $('#formModalMsg').textContent = '';
     const submit = $('#btnFormModalSubmit');
     submit.textContent = submitLabel || t('common.ok');
+    submit.className = `btn ${danger ? 'danger' : 'primary'}`;
     submit.disabled = false;
     $('#formModal').hidden = false;
     box.querySelector('input')?.focus();
