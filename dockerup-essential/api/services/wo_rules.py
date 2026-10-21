@@ -200,6 +200,7 @@ def _numbers(value, out: set):
         return
     if isinstance(value, (int, float)):
         out.add(round(float(value), 2))
+        out.add(round(abs(float(value)), 2))    # "down 3.7" for a change of −3.7 (the sign is in the words)
     elif isinstance(value, str):
         for m in NUM_RE.findall(value):
             try:

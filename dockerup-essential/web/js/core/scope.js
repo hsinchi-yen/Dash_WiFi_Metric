@@ -48,3 +48,8 @@ export function queryString(params) {
 export function scopeKey(state, today = new Date()) {
     return queryString(scopeParams(state, today));
 }
+
+/** Link to a work order's detail page: #wo?wo=…&pm=…[&cmp=…&cpm=…][&focus=report]. */
+export function detailHref(wo, pm, extra = {}) {
+    return `#wo?${new URLSearchParams({ wo, ...(pm ? { pm } : {}), ...extra }).toString()}`;
+}

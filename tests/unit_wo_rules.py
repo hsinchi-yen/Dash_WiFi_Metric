@@ -126,6 +126,7 @@ check("rejects a computed fail rate (1%)", not ok("良率 99%,不良率 1.0%"))
 check("rejects an invented threshold", not ok("yield 99% is below the 99.5% target"))
 check("rejects an invented date", not ok("Done on 10/27 with 300 units."))
 check("product number is allowed (TN-86)", ok("TN-86 已測 300 台"))
+check("the size of a negative change is allowed (down 3.7 for −3.7)", R.numbers_ok("units per hour down 3.7", {"diff": -3.7})[0])
 
 # ── Clock ──
 n = R.local_now("Asia/Taipei")

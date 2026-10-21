@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any, Optional
 
 import db
+from services import settings
 from services.filters import UNIT, range_where, resolve_range_window
 from services.stats import FAIL_REASON_SQL, RETRY_FILTER_SQL
 
@@ -158,7 +159,68 @@ def overview(date_from, date_to, work_order, product_model) -> dict[str, Any]:
         "monthly": monthly(year, work_order, product_model),
         "throughput": throughput_bands(window, work_order, product_model),
         "plan": plan_status(work_order, s["total"]),
+        "hourly": hourly_output(window, work_order, product_model) if s["total"] else {"day": None, "points": []},
     }
+
+
+def _minutes(hhmm: str) -> int:
+    h, m = hhmm.split(":")
+    return int(h) * 60 + int(m)
+
+
+def hourly_output(window: dict, work_order, product_model) -> dict[str, Any]:
+    """Units tested per hour during working hours (Settings: 07:00–19:00 by default) on the latest
+    test day inside the filter, PASS / FAIL stacked, plus the hourly target when one product is in view."""
+    s = settings.get()
+    start, end = _minutes(s["work_start"]), _minutes(s["work_end"])
+    where, params = range_where(window, work_order, product_model)
+    row = db.rows(f"SELECT MAX(test_time) AS last FROM {UNIT} {where}", tuple(params))[0]
+    if not row["last"]:
+        return {"day": None, "points": []}
+    day = datetime.fromisoformat(row["last"]).replace(hour=0, minute=0, second=0, microsecond=0)
+    day_where, day_params = range_where(window, work_order, product_model, "test_time >= %s AND test_time < %s")
+    rows = db.rows(f"""
+        SELECT EXTRACT(HOUR FROM test_time)::int AS h, EXTRACT(MINUTE FROM test_time)::int AS m,
+               COUNT(*) FILTER (WHERE result = TRUE) AS pass, COUNT(*) FILTER (WHERE result = FALSE) AS fail
+        FROM {UNIT} {day_where}
+        GROUP BY 1, 2
+    """, (*day_params, day, day + timedelta(days=1)))
+    hours = [h for h in range(24) if h * 60 < end and (h + 1) * 60 > start]
+    by_hour = {h: {"pass": 0, "fail": 0} for h in hours}
+    before = after = 0
+    for r in rows:
+        minute = r["h"] * 60 + r["m"]
+        n = int(r["pass"] or 0) + int(r["fail"] or 0)
+        if minute < start:
+            before += n
+        elif minute >= end:
+            after += n
+        else:
+            by_hour[r["h"]]["pass"] += int(r["pass"] or 0)
+            by_hour[r["h"]]["fail"] += int(r["fail"] or 0)
+    points = [{"hour": f"{h:02d}:00", "pass": v["pass"], "fail": v["fail"], "units": v["pass"] + v["fail"]}
+              for h, v in sorted(by_hour.items())]
+    return {"day": day.strftime("%Y-%m-%d"), "start": s["work_start"], "end": s["work_end"],
+            "points": points, "before": before, "after": after, **_hour_target(work_order, product_model)}
+
+
+def _hour_target(work_order, product_model) -> dict[str, Any]:
+    """The hourly target in use (Settings override, else the product's usual rate) when one product is in view."""
+    from services import wo_status   # late import: wo_status imports this module's neighbours
+    if work_order:   # the same target the Work Orders page shows for this work order
+        mine = [st for (wo, pm), st in wo_status.statuses().items()
+                if wo == work_order and (not product_model or pm == product_model)]
+        if len(mine) == 1:
+            return {"target": mine[0].get("uph_target"), "target_source": mine[0].get("uph_target_source")}
+        return {"target": None, "target_source": None}
+    product = product_model
+    if not product:
+        return {"target": None, "target_source": None}
+    override = (settings.get().get("uph_targets") or {}).get(product)
+    if override:
+        return {"target": float(override), "target_source": "setting"}
+    median = (wo_status.product_uph().get(product) or {}).get("median")
+    return {"target": median, "target_source": "history" if median else None}
 
 
 def plan_status(work_order, tested) -> Optional[dict[str, Any]]:

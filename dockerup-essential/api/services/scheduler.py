@@ -9,7 +9,7 @@ import logging
 import threading
 
 import config
-from services import reports, stats, wo_notes
+from services import reports, stats, wo_notes, wo_report
 
 log = logging.getLogger("wifi.scheduler")
 
@@ -33,6 +33,8 @@ def _report_worker():
             if wo_notes.process_once():        # one-line notes first: short, and the Work Orders page shows them
                 continue
             if reports.process_queue_once():
+                continue
+            if wo_report.process_once():       # structured final reports (done work orders, requests)
                 continue
             if config.REPORT_AUTO and ticks % 12 == 0:
                 reports.warm_once()

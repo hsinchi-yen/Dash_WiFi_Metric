@@ -28,3 +28,11 @@ Phase 5A (settings, work-order status, one-line AI notes):
 | `python3 tests/unit_wo_rules.py` | The status rules (`services/wo_rules.py`, no database): states, lights, every check, note hash, rule sentences, the number check on AI sentences. |
 | `python3 tests/acceptance_phase5a.py [BASE]` | Settings API (read, 401 / 403, eleven invalid inputs, change → status / thresholds / hourly targets follow, restore, audit), the statuses of all 77 work orders on the production copy, and every stored AI note against the number rule. Restores the settings it changes. |
 | `python3 tests/e2e_phase5a.py [BASE] [OUT_DIR]` | Browser: language default (browser language, `?lang=`), Work Orders status / note / column switch, Settings sign-in / denied / form / invalid input / save and restore. |
+
+Phase 5B (Dashboard hourly output, work-order detail, comparison, administrator plan, final report):
+
+| Command | What it does |
+|---|---|
+| `python3 tests/acceptance_phase5b.py [BASE]` | Dashboard hourly output (07:00–19:00, sums, target), detail numbers and the previous same-product work order, comparisons (any two, same → 400, unknown → 404), planned quantity (401 / 403 / invalid / set / clear / audit), batches, the final report of a normal and a red work order (every number a fact, normal = summary only, causes phrased as possibilities), follow-up questions, rate limit. Sets and clears one plan. |
+| `python3 tests/e2e_phase5b.py [BASE] [OUT_DIR]` | Browser: Dashboard split tile + hourly chart (no scrolling at 1080p), Work Orders → detail, comparison select, report, suggested question, 中文, compare-two from the list, administrator plan set / clear, Fail List link. |
+| `docker run … python3 /tests/unit_plan_revert.py` | The planned quantity when upload batches are undone, in seven orders of batches and administrator changes, against the real schema in a rolled-back transaction (command in the file). |

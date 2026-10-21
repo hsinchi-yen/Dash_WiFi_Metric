@@ -47,10 +47,10 @@ with sync_playwright() as p:
     page.click("#btnLang"); shot("06_overview_light_zh")
     page.goto(f"{BASE}/#workorders", wait_until="networkidle"); shot("06_workorders_light_zh")
     page.click("#btnTheme")   # back to dark, stay zh
-    # AI report modal (do not wait for the LLM; just the window)
+    # Work-order detail page with its final report (5B; replaces the old report window)
     page.goto(f"{BASE}/#workorders", wait_until="networkidle")
-    page.click("#woRows [data-report]"); page.wait_for_timeout(2500); page.screenshot(path=f"{OUT}/07_report_modal.png"); print("shot 07_report_modal", page.locator("#rpTitle").inner_text())
-    page.keyboard.press("Escape")
+    page.locator("#woRows a.wo-link").first.click(); page.wait_for_selector("#wdPanel:not([hidden])", timeout=15000)
+    page.wait_for_timeout(2500); page.screenshot(path=f"{OUT}/07_wo_detail.png"); print("shot 07_wo_detail", page.locator("#wdWo").inner_text())
     # phone
     phone = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
     phone.goto(f"{BASE}/#overview", wait_until="networkidle"); phone.wait_for_timeout(1500)

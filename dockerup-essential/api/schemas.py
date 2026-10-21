@@ -114,3 +114,25 @@ class SettingsBody(BaseModel):
     tp_drop_pct: Optional[StrictInt] = None
     behind_pct: Optional[StrictInt] = None
     uph_targets: Optional[dict[str, Number]] = Field(None, description="product → units per hour; null clears the override")
+
+
+# ─── Work-order detail (5B) ──────────────────────────────────────────────────
+
+class WorkOrderKey(BaseModel):
+    work_order: StrictStr = Field(..., min_length=1, max_length=64)
+    product_model: Optional[StrictStr] = Field(None, max_length=128)
+
+
+class PlanBody(WorkOrderKey):
+    planned_qty: StrictInt
+
+
+class AskTurn(BaseModel):
+    q: str = Field("", max_length=300)
+    a: str = Field("", max_length=800)
+
+
+class AskBody(WorkOrderKey):
+    question: StrictStr = Field(..., min_length=1, max_length=300)
+    lang: Literal["zh", "en"] = "zh"
+    history: list[AskTurn] = Field(default_factory=list, max_length=3)

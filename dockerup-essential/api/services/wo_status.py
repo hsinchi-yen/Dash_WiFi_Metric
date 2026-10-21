@@ -110,9 +110,15 @@ def _compute(now) -> tuple[dict, dict]:
     return out, uph_by_product
 
 
+def _plan_version():
+    """Changes whenever a planned quantity is set, cleared or undone (on either API worker)."""
+    row = db.rows("SELECT COUNT(*) AS n, MAX(updated_at) AS at, MAX(admin_at) AS admin_at FROM wo_plan")[0]
+    return (row["n"], row["at"], row["admin_at"])
+
+
 def _ensure(now=None):
     now = now or local_now(config.LOCAL_TZ)
-    key = (stats.refreshed_at(), settings.version())
+    key = (stats.refreshed_at(), settings.version(), _plan_version())
     with _lock:
         fresh = _cache["key"] == key and time.time() - _cache["at"] < config.WO_STATUS_CACHE_SEC
         if not fresh:
@@ -123,6 +129,12 @@ def _ensure(now=None):
 
 def statuses() -> dict:
     return _ensure()[0]
+
+
+def cache_key():
+    """Changes when the statuses are recomputed (new data, new settings): a key for derived caches."""
+    _ensure()
+    return (_cache["key"], _cache["at"])
 
 
 def product_uph() -> dict:

@@ -18,8 +18,9 @@ import logupload from './pages/logupload.js';
 import products from './pages/products.js';
 import accounts from './pages/accounts.js';
 import settings from './pages/settings.js';
+import wodetail from './pages/wodetail.js';
 
-const PAGES = [overview, workorders, fails, rf, production, logupload, products, dbtweak, accounts, settings];
+const PAGES = [overview, workorders, fails, rf, production, logupload, products, dbtweak, accounts, settings, wodetail];
 const byId = Object.fromEntries(PAGES.map(p => [p.id, p]));
 const IDLE_MS = 5 * 60 * 1000;
 const ROTATE_MS = 30 * 1000;
@@ -35,6 +36,14 @@ export const app = {
     latestWorkOrder() { return this.options.latest_work_order || ''; },
     openReport(wo, product) { report.open(wo, product); },
     reload() { return loadPage(); },
+    /** Set the filter bar (e.g. a detail page's "all failures" link) before switching pages. */
+    setScope(next) {
+        Object.assign(this.scope, next);
+        renderRange();
+        renderProductOptions();
+        renderWoOptions();
+        updateScopeLabel();
+    },
     refreshOptions: () => loadOptions(),
 };
 
@@ -302,6 +311,7 @@ function initIdleRotation() {
     setInterval(() => {
         if (Date.now() - idle.last < IDLE_MS || busy() || document.hidden) return;
         const i = ROTATION.indexOf(app.page?.id);
+        if (app.page?.id === 'wo') return;   // a work-order detail page is being read: leave it where it is
         const next = ROTATION[(i + 1) % ROTATION.length];
         if (location.hash !== `#${next}`) location.hash = next;
         else loadPage();

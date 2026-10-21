@@ -4,14 +4,14 @@
 import { apiGet } from '../core/api.js';
 import { esc, fmtDateTime, fmtInt, fmtNum, fmtPct, yieldLevel } from '../core/format.js';
 import { getLang, joinList, t } from '../core/i18n.js';
-import { queryString } from '../core/scope.js';
+import { detailHref, queryString } from '../core/scope.js';
 import { $, $$, debounce, tableState } from '../core/ui.js';
 
 const COLS_KEY = 'wifi-wo-cols';
-const BASIC = ['status', 'wo', 'product', 'plan', 'yield', 'fail', 'note', 'last', 'report'];
-const ALL = ['status', 'wo', 'product', 'plan', 'yield', 'pass', 'fail', 'retry', 'avg24', 'avg5', 'duration', 'uph', 'note', 'last', 'report'];
+const BASIC = ['pick', 'status', 'wo', 'product', 'plan', 'yield', 'fail', 'note', 'last', 'report'];
+const ALL = ['pick', 'status', 'wo', 'product', 'plan', 'yield', 'pass', 'fail', 'retry', 'avg24', 'avg5', 'duration', 'uph', 'note', 'last', 'report'];
 const HEAD = {
-    status: ['wo.col.status'], wo: ['wo.col.wo'], product: ['wo.col.product'], plan: ['wo.col.plan', 'num'],
+    pick: ['wo.col.pick'], status: ['wo.col.status'], wo: ['wo.col.wo'], product: ['wo.col.product'], plan: ['wo.col.plan', 'num'],
     yield: ['wo.col.yield', 'num'], pass: ['PASS', 'num'], fail: ['FAIL', 'num'], retry: ['wo.col.retry', 'num'],
     avg24: ['wo.col.avg24', 'num'], avg5: ['wo.col.avg5', 'num'], duration: ['wo.col.duration', 'num'],
     uph: ['wo.col.uphTarget', 'num'], note: ['wo.col.note'], last: ['wo.col.last'], report: ['wo.col.report'],
@@ -20,6 +20,7 @@ let rows = [];
 let seq = 0;
 let appRef;
 let mode = 'basic';
+const picked = [];          // up to two [work order, product] keys to compare
 
 /** "1.5 h" / "2.3 d" from seconds. */
 export function fmtDuration(sec) {
@@ -84,7 +85,12 @@ function uphCell(r) {
 function cell(c, r) {
     switch (c) {
     case 'status': return statusCell(r.status);
-    case 'wo': return `<td class="nowrap"><strong>${esc(r.work_order)}</strong></td>`;
+    case 'pick': {
+        const on = picked.some(k => k[0] === r.work_order && k[1] === (r.product_model || ''));
+        return `<td><input type="checkbox" class="wo-pick" data-wo="${esc(r.work_order)}" data-pm="${esc(r.product_model || '')}"${on ? ' checked' : ''}
+            aria-label="${esc(t('wo.pickAria', { wo: r.work_order }))}"></td>`;
+    }
+    case 'wo': return `<td class="nowrap"><a class="wo-link" href="${esc(detailHref(r.work_order, r.product_model))}"><strong>${esc(r.work_order)}</strong></a></td>`;
     case 'product': return `<td class="nowrap">${esc(r.product_model || '—')}</td>`;
     case 'plan': return planCell(r);
     case 'yield': return `<td class="num"><span class="badge ${yieldLevel(r.yield_pct)}">${fmtPct(r.yield_pct)}</span></td>`;
@@ -97,13 +103,20 @@ function cell(c, r) {
     case 'uph': return uphCell(r);
     case 'note': return noteCell(r.status);
     case 'last': return `<td class="nowrap">${esc(fmtDateTime(r.end_time))}</td>`;
-    case 'report': return `<td><button class="btn small" type="button" data-report="${esc(r.work_order)}" data-product="${esc(r.product_model || '')}">✨ ${esc(t('wo.report'))}</button></td>`;
+    case 'report': return `<td><a class="btn small" href="${esc(detailHref(r.work_order, r.product_model, { focus: 'report' }))}">✨ ${esc(t('wo.report'))}</a></td>`;
     default: return '<td></td>';
     }
 }
 
+function renderPicked() {
+    const btn = $('#btnWoCompare');
+    btn.textContent = t('wo.compareBtn', { n: picked.length });
+    btn.disabled = picked.length !== 2;
+}
+
 function render() {
     renderHead();
+    renderPicked();
     const q = $('#woSearch').value.trim().toLowerCase();
     const shown = q ? rows.filter(r => `${r.work_order} ${r.product_model || ''}`.toLowerCase().includes(q)) : rows;
     $('#woCount').textContent = t('wo.count', { n: fmtInt(shown.length) });
@@ -137,10 +150,22 @@ function init(app) {
         try { localStorage.setItem(COLS_KEY, mode); } catch { /* storage blocked */ }
         render();
     }));
-    $('#woRows').addEventListener('click', e => {
-        const btn = e.target.closest('[data-report]');
-        if (btn) appRef.openReport(btn.dataset.report, btn.dataset.product);
+    $('#woRows').addEventListener('change', e => {
+        const box = e.target.closest('.wo-pick');
+        if (!box) return;
+        const key = [box.dataset.wo, box.dataset.pm];
+        const i = picked.findIndex(k => k[0] === key[0] && k[1] === key[1]);
+        if (box.checked) {
+            if (picked.length >= 2) { box.checked = false; return; }
+            picked.push(key);
+        } else if (i >= 0) picked.splice(i, 1);
+        renderPicked();
+    });
+    $('#btnWoCompare').addEventListener('click', () => {
+        if (picked.length !== 2) return;
+        const [a, b] = picked;
+        location.hash = detailHref(a[0], a[1], { cmp: b[0], ...(b[1] ? { cpm: b[1] } : {}) });
     });
 }
 
-export default { id: 'workorders', scoped: true, init, load, onLangChange: () => { renderHead(); if (rows.length) render(); } };
+export default { id: 'workorders', scoped: true, init, load, onLangChange: () => { renderHead(); renderPicked(); if (rows.length) render(); } };

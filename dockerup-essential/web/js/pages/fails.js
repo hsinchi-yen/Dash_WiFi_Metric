@@ -2,7 +2,7 @@
 import { apiGet, download } from '../core/api.js';
 import { esc, fmtDateTime, fmtInt, fmtNum, fmtSigned } from '../core/format.js';
 import { t } from '../core/i18n.js';
-import { queryString } from '../core/scope.js';
+import { detailHref, queryString } from '../core/scope.js';
 import { $, debounce, tableState, toast } from '../core/ui.js';
 
 const PAGE_SIZE = 50;
@@ -53,7 +53,7 @@ async function load(app = appRef) {
         else {
             tbody.innerHTML = data.items.map(r => `<tr>
                 <td class="nowrap">${esc(fmtDateTime(r.test_time))}</td>
-                <td class="nowrap">${esc(r.work_order || '—')}</td>
+                <td class="nowrap">${r.work_order ? `<a class="wo-link" href="${esc(detailHref(r.work_order, r.product_model))}">${esc(r.work_order)}</a>` : '—'}</td>
                 <td class="nowrap">${esc(r.product_model || '—')}</td>
                 <td><code>${esc(r.sn)}</code></td>
                 <td><code>${esc(r.wifi_mac || '—')}</code></td>

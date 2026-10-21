@@ -124,7 +124,10 @@ whole = {(r["work_order"], r["product_model"]): r["status"]["total"] for r in ro
 check("status covers the whole work order even when the page shows a date range",
       scoped and all(r["status"]["total"] == whole[(r["work_order"], r["product_model"])] for r in scoped))
 
-# ── Notes (L1) ──
+# ── Notes (L1) ── (background work: give a note changed by an earlier test a moment)
+end = time.time() + 180
+while time.time() < end and call("GET", "/api/wo-notes/queue")[1]["due"]:
+    time.sleep(5)
 queue = call("GET", "/api/wo-notes/queue")[1]
 check("notes stored for every work order", queue["stored"] >= 77 and queue["due"] == 0, queue)
 llm_notes = [x for x in items if x["note"]["source"] == "llm" and not x["note"]["pending"]]

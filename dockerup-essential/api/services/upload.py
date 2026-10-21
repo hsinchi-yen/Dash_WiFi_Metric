@@ -591,21 +591,26 @@ def _after_change() -> None:
 def revert(conn, row: dict, user: dict) -> int:
     """Delete only the rows this batch inserted; recompute the work order's plan; drop a new product left without data.
 
-    The plan of a work order is always the planned quantity of its newest finished, not-undone batch
-    (so batches can be undone in any order); with none left the plan row disappears."""
+    Only a plan this batch set is recomputed: it becomes the planned quantity of the newest finished,
+    not-undone batch (so batches can be undone in any order) or the administrator's value
+    (wo_plan.admin_qty), whichever was set later; with neither the plan row disappears. A plan set later (by another batch or the
+    administrator) is left alone."""
     upload_id = row["id"]
     reverted = db.execute(conn, "DELETE FROM test_record WHERE upload_id = %s", (upload_id,))
     db.execute(conn, """
         UPDATE upload_log SET status = 'reverted', reverted = %s, reverted_by = %s, reverted_at = NOW() WHERE id = %s
     """, (reverted, user["username"], upload_id))
     wo = row["work_order"]
-    if wo:
+    current = db.fetch_one(conn, "SELECT upload_id, admin_qty, admin_at FROM wo_plan WHERE work_order = %s", (wo,)) if wo else None
+    if wo and current and current["upload_id"] == upload_id:
         newest = db.fetch_one(conn, """
-            SELECT id, planned_qty, product_model, username FROM upload_log
+            SELECT id, planned_qty, product_model, username, finished_at FROM upload_log
             WHERE work_order = %s AND status = 'done' AND planned_qty IS NOT NULL
             ORDER BY finished_at DESC NULLS LAST, created_at DESC LIMIT 1
         """, (wo,))
-        if newest:
+        admin_later = current["admin_qty"] is not None and (
+            not newest or not newest["finished_at"] or (current["admin_at"] and current["admin_at"] > newest["finished_at"]))
+        if newest and not admin_later:
             db.execute(conn, """
                 INSERT INTO wo_plan (work_order, product_model, planned_qty, updated_by, updated_at, upload_id)
                 VALUES (%s, %s, %s, %s, NOW(), %s)
@@ -613,6 +618,11 @@ def revert(conn, row: dict, user: dict) -> int:
                 SET product_model = EXCLUDED.product_model, planned_qty = EXCLUDED.planned_qty,
                     updated_by = EXCLUDED.updated_by, updated_at = NOW(), upload_id = EXCLUDED.upload_id
             """, (wo, newest["product_model"], newest["planned_qty"], user["username"], newest["id"]))
+        elif admin_later:
+            db.execute(conn, """
+                UPDATE wo_plan SET planned_qty = admin_qty, upload_id = NULL, updated_by = admin_by, updated_at = NOW()
+                WHERE work_order = %s
+            """, (wo,))
         else:
             db.execute(conn, "DELETE FROM wo_plan WHERE work_order = %s", (wo,))
     if row.get("new_product") and row.get("product_model"):

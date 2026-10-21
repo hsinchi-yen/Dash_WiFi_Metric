@@ -41,7 +41,10 @@ LLM_REPORT_MAX_TOKENS = int(os.environ.get("LLM_REPORT_MAX_TOKENS", "1024"))
 # AI reports are generated in the background and stored (ai_reports); opening one is a read.
 # REPORT_AUTO keeps the newest REPORT_WARM_LATEST work orders' reports current in both languages
 # (regenerated when their data changes); reports for other work orders are generated on first open.
-REPORT_AUTO = os.environ.get("REPORT_AUTO", "true").lower() == "true"
+# The five-section reports (ai_reports) are replaced by the structured final report (wo_report, 5B);
+# their background warm-up is off unless REPORT_AUTO=true.
+REPORT_AUTO = os.environ.get("REPORT_AUTO", "false").lower() == "true"
+WO_REPORT_AUTO = os.environ.get("WO_REPORT_AUTO", "true").lower() == "true"   # final report when a work order is done
 REPORT_WARM_LATEST = int(os.environ.get("REPORT_WARM_LATEST", "30"))
 REPORT_FAILED_RETRY_SEC = 300   # a failed generation is not retried automatically for this long
 

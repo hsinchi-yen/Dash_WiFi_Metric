@@ -12,6 +12,7 @@ desktop rows stay NULL). Everything else new lives in separate objects:
   wo_plan           planned test quantity per work order
   upload_log / upload_log_item                           web uploads and their per-file results
   wo_status_note    L1 one-line status note per work order (settings live in app_meta "settings")
+  wo_report         L3 structured final report per work order
 
 Old-database compatibility (tests/db_compat.sh must print COMPATIBLE before a deployment):
   - never alter, drop or constrain test_record or the old views v_yield_by_wo / v_unstable_units /
@@ -220,6 +221,31 @@ TABLES = (
         created_at    TIMESTAMPTZ DEFAULT NOW(),
         PRIMARY KEY (work_order, product_model)
     )""",
+    # L3: the structured final report per work order (latest only; facts shown as they are, the LLM writes
+    # summary / anomalies / possible causes / actions in both languages; numbers checked against the facts)
+    """CREATE TABLE IF NOT EXISTS wo_report (
+        work_order    TEXT NOT NULL,
+        product_model TEXT NOT NULL DEFAULT '',
+        facts_hash    TEXT,
+        facts         JSONB,
+        report        JSONB,
+        source        TEXT,
+        model         TEXT,
+        error         TEXT,
+        rejected      JSONB,
+        elapsed_sec   REAL,
+        created_at    TIMESTAMPTZ,
+        requested_at  TIMESTAMPTZ,
+        requested_by  TEXT,
+        PRIMARY KEY (work_order, product_model)
+    )""",
+)
+
+# Columns added later to this project's own tables (never to test_record).
+OWN_COLUMNS = (
+    ("wo_plan", "admin_qty", "INT"),            # the administrator's planned quantity (kept when upload batches are undone)
+    ("wo_plan", "admin_by", "TEXT"),
+    ("wo_plan", "admin_at", "TIMESTAMPTZ"),
 )
 
 
@@ -256,6 +282,9 @@ def run():
         cur.execute("SELECT pg_advisory_xact_lock(%s)", (config.MIGRATION_LOCK_KEY,))
         for ddl in TABLES:
             cur.execute(ddl)
+        for table, column, kind in OWN_COLUMNS:
+            if not _column_exists(cur, table, column):
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
         # A worker that died mid-generation leaves 'running' rows behind; re-queue them.
         cur.execute("UPDATE ai_reports SET status = 'queued', started_at = NULL WHERE status = 'running'")
 

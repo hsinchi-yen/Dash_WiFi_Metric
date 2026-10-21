@@ -1,16 +1,27 @@
 /* ─── Dashboard (overview): one row of seven numbers, then four charts ──────── */
-.ov-numbers { display: grid; grid-template-columns: minmax(300px, 1.5fr) repeat(6, minmax(0, 1fr)); gap: 14px; }
+.ov-numbers { display: grid; grid-template-columns: minmax(230px, 1.3fr) minmax(280px, 1.4fr) repeat(6, minmax(0, 1fr)); gap: 14px; }
+/* PASS / FAIL split: a small doughnut with its own legend, left of the yield. */
+.ov-split { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; display: grid; gap: 4px; align-content: center; min-width: 0; }
+.ov-split .label { font-size: 15px; font-weight: 700; color: var(--text-2); white-space: nowrap; }
+.ov-split-body { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 12px; align-items: center; }
+.ov-split-chart { position: relative; width: 84px; height: 84px; }
+.ov-split-legend { display: grid; gap: 0; font-size: 13px; min-width: 0; }
+.ov-split-legend .item + .item { margin-top: 6px; }
+.ov-split-legend .row { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.ov-split-legend .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; align-self: center; }
+.ov-split-legend b { font-size: 19px; font-variant-numeric: tabular-nums; margin-left: auto; }
+.ov-split-legend .pct { color: var(--text-3); font-size: 12.5px; padding-left: 16px; font-variant-numeric: tabular-nums; }
 .ov-hero { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 20px; display: grid; gap: 4px; align-content: center; min-width: 0; }
 .ov-hero .label { font-size: 16px; font-weight: 700; color: var(--text-2); }
-/* "100.00%" must fit next to six more tiles on a 1920 screen: scale with the viewport, cap at 68px. */
-.ov-hero .value { font-size: clamp(44px, 3.4vw, 68px); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -1px; white-space: nowrap; }
+/* "100.00%" must fit next to the split and six more tiles on a 1920 screen: scale with the viewport, cap at 62px. */
+.ov-hero .value { font-size: clamp(44px, 3.1vw, 62px); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -1px; white-space: nowrap; }
 .ov-hero .value small { font-size: 0.45em; font-weight: 700; margin-left: 2px; }
 .ov-hero .aligned { font-size: 15px; color: var(--text-2); font-weight: 600; }
 .ov-hero .aligned b { font-size: 22px; color: var(--text); }
 .ov-hero .aligned .gap { display: block; font-size: 13px; color: var(--text-3); white-space: nowrap; }
-.ov-num { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; display: grid; align-content: center; gap: 2px; min-width: 0; }
+.ov-num { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 14px; display: grid; align-content: center; gap: 2px; min-width: 0; }
 .ov-num .label { font-size: 15px; font-weight: 700; color: var(--text-2); white-space: nowrap; }
-.ov-num .value { font-size: 40px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ov-num .value { font-size: clamp(28px, 2.05vw, 40px); font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ov-num .sub { font-size: 12.5px; color: var(--text-3); }
 /* The overview fills the screen: numbers on top, the four charts share the remaining height. */
 #page-overview { grid-template-rows: auto minmax(0, 1fr); }
@@ -25,11 +36,11 @@
 .v-pass { color: var(--c-pass); } .v-fail { color: var(--c-fail); } .v-stop { color: var(--c-stop); }
 
 @media (max-width: 1600px) {
-    .ov-numbers { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-    .ov-hero { grid-column: 1 / -1; }
+    .ov-numbers { grid-template-columns: repeat(4, minmax(0, 1fr)); }   /* eight tiles: two rows of four */
 }
 @media (max-width: 900px) {
     .ov-numbers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .ov-hero, .ov-split { grid-column: 1 / -1; }
     .ov-charts { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
     .ov-charts .chart-box { flex: none; height: 240px; }
     .chart-pair { grid-template-columns: minmax(0, 1fr); }
@@ -123,3 +134,26 @@ details summary { cursor: pointer; color: var(--text-2); font-size: 13px; margin
 .input.invalid { border-color: var(--bad); box-shadow: 0 0 0 2px var(--bad-bg); }
 #setPanel .toolbar .form-msg { margin-top: 0; }
 @media (max-width: 1200px) { .set-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* ─── Work-order detail (5B) ────────────────────────────────────────────── */
+.wo-link { color: inherit; text-decoration: none; border-bottom: 1px dashed var(--text-3); }
+.wo-link:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.wo-pick { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.wd-head { display: grid; gap: 10px; }
+.wd-wo { font-size: 24px; font-weight: 800; letter-spacing: .3px; }
+.wd-note { font-size: 16px; line-height: 1.6; }
+.wd-tiles { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+.wd-tiles .tile-value small { font-size: 0.55em; color: var(--text-3); font-weight: 700; }
+.wd-cmp-sel { max-width: 420px; }
+.wd-cmp tr.notable td { background: var(--bad-bg); }
+.wd-pair .chart-box { height: 220px; }
+.wd-report { max-width: 1100px; line-height: 1.75; font-size: 15px; }
+.wd-report .wd-summary { font-size: 16px; margin-bottom: 8px; }
+.wd-report h4 { font-size: 14px; color: var(--text-2); margin: 12px 0 4px; }
+.wd-report ul { padding-left: 20px; display: grid; gap: 2px; }
+.wd-facts-box table th { width: 260px; text-align: left; position: static; }
+.wd-ask { margin-top: 16px; border-top: 1px dashed var(--border); padding-top: 14px; max-width: 1100px; }
+.wd-ask-log { max-height: 320px; min-height: 60px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); margin-bottom: 8px; }
+.msg.refused { border-color: var(--warn); }
+@media (max-width: 1600px) { .wd-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .wd-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

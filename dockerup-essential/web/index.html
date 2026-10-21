@@ -99,6 +99,13 @@
     <!-- ─── Dashboard ─── -->
     <section class="page" id="page-overview" hidden>
         <div class="ov-numbers">
+            <div class="ov-split">
+                <div class="label" data-i18n="ov.split"></div>
+                <div class="ov-split-body">
+                    <div class="ov-split-chart"><canvas id="chOvSplit"></canvas></div>
+                    <div class="ov-split-legend" id="ovSplitLegend"></div>
+                </div>
+            </div>
             <div class="ov-hero">
                 <div class="label" data-i18n="ov.yield"></div>
                 <div class="value" id="ovYield">—</div>
@@ -113,7 +120,7 @@
         </div>
         <div class="ov-charts">
             <div class="card"><div class="card-head"><div class="card-title" data-i18n="ov.trend"></div><div class="card-note" id="ovTrendNote"></div></div><div class="chart-box"><canvas id="chOvTrend"></canvas></div></div>
-            <div class="card"><div class="card-head"><div class="card-title" data-i18n="ov.split"></div></div><div class="chart-box"><canvas id="chOvSplit"></canvas></div></div>
+            <div class="card"><div class="card-head"><div class="card-title" data-i18n="ov.hourly"></div><div class="card-note" id="ovHourlyNote"></div></div><div class="chart-box"><canvas id="chOvHourly"></canvas></div></div>
             <div class="card"><div class="card-head"><div class="card-title" data-i18n="ov.monthly"></div><div class="card-note" id="ovMonthlyNote"></div></div><div class="chart-box"><canvas id="chOvMonthly"></canvas></div></div>
             <div class="card">
                 <div class="card-head"><div class="card-title" data-i18n="ov.throughput"></div><div class="card-note" data-i18n="ov.throughputNote"></div></div>
@@ -134,6 +141,7 @@
                     <button type="button" data-cols="basic" data-i18n="wo.cols.basic"></button>
                     <button type="button" data-cols="all" data-i18n="wo.cols.all"></button>
                 </div>
+                <button class="btn small" type="button" id="btnWoCompare" disabled></button>
                 <span class="spacer"></span>
                 <span class="muted" id="woCount"></span>
             </div>
@@ -506,6 +514,106 @@
                     </table>
                 </div>
                 <div class="pager" id="acctLoginPager"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── Work-order detail (5B): reached from the Work Orders / Fail List pages, #wo?wo=…&pm=… ─── -->
+    <section class="page" id="page-wo" hidden>
+        <div class="card" id="wdMissing" hidden><div class="state-msg" id="wdMissingText"></div></div>
+        <div class="stack" id="wdPanel" hidden>
+            <div class="card wd-head">
+                <div class="toolbar">
+                    <a class="btn small ghost" href="#workorders" data-i18n="wd.back"></a>
+                    <h2 class="wd-wo" id="wdWo"></h2>
+                    <span class="muted" id="wdProduct"></span>
+                    <span class="wo-state" id="wdState"><span class="wo-dot"></span><span id="wdStateText"></span></span>
+                    <span class="spacer"></span>
+                    <span class="muted small-text" id="wdPeriod"></span>
+                    <button class="btn small" type="button" id="btnWdPlan" hidden data-i18n="wd.setPlan"></button>
+                </div>
+                <div class="wd-note" id="wdNote"></div>
+            </div>
+            <div class="tiles wd-tiles" id="wdTiles"></div>
+            <div class="grid cols-2">
+                <div class="card">
+                    <div class="card-head"><div class="card-title" data-i18n="wd.checks"></div><div class="card-note" id="wdChecksNote"></div></div>
+                    <ul class="issues" id="wdChecks"></ul>
+                </div>
+                <div class="card">
+                    <div class="card-head">
+                        <div class="card-title" data-i18n="wd.compare"></div>
+                        <select class="select wd-cmp-sel" id="wdCompareSel" data-i18n-aria="wd.compareAria"></select>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="wd-cmp">
+                            <thead><tr><th data-i18n="wd.col.metric"></th><th class="num" id="wdCmpA"></th><th class="num" id="wdCmpB"></th><th class="num" data-i18n="wd.col.change"></th></tr></thead>
+                            <tbody id="wdCmpRows"></tbody>
+                        </table>
+                    </div>
+                    <div class="muted small-text mt-s" id="wdCmpNote"></div>
+                </div>
+            </div>
+            <div class="grid cols-2">
+                <div class="card"><div class="card-head"><div class="card-title" data-i18n="ov.trend"></div><div class="card-note" id="wdTrendNote"></div></div><div class="chart-box"><canvas id="chWdTrend"></canvas></div></div>
+                <div class="card">
+                    <div class="card-head"><div class="card-title" data-i18n="ov.throughput"></div><div class="card-note" data-i18n="ov.throughputNote"></div></div>
+                    <div class="chart-pair wd-pair">
+                        <div><div class="chart-sub" data-i18n="rf.band24"></div><div class="chart-box"><canvas id="chWdTp24"></canvas></div></div>
+                        <div><div class="chart-sub" data-i18n="rf.band5"></div><div class="chart-box"><canvas id="chWdTp5"></canvas></div></div>
+                    </div>
+                </div>
+            </div>
+            <div class="card" id="wdReportCard">
+                <div class="card-head">
+                    <div class="card-title" data-i18n="wd.report"></div>
+                    <div class="toolbar">
+                        <span class="muted small-text" id="wdReportMeta"></span>
+                        <button class="btn small" type="button" id="btnWdCopy" data-i18n="rp.copy"></button>
+                        <button class="btn small" type="button" id="btnWdRegen" data-i18n="wd.regen"></button>
+                    </div>
+                </div>
+                <div id="wdReportState"></div>
+                <div class="wd-report" id="wdReport"></div>
+                <details class="wd-facts-box">
+                    <summary data-i18n="wd.facts"></summary>
+                    <div class="table-wrap mt-s"><table><tbody id="wdFacts"></tbody></table></div>
+                </details>
+                <div class="wd-ask">
+                    <div class="card-title mb-s" data-i18n="wd.ask"></div>
+                    <div class="chat-log wd-ask-log" id="wdAskLog" aria-live="polite"></div>
+                    <div class="chips" id="wdAskChips"></div>
+                    <div class="chat-input bare mt-s">
+                        <input class="input" id="wdAskInput" maxlength="300" autocomplete="off" data-i18n-placeholder="wd.askPh">
+                        <button class="btn primary" type="button" id="btnWdAsk" data-i18n="lu.send"></button>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-head"><div class="card-title" data-i18n="wd.fails"></div><a class="card-note" id="wdFailsLink" href="#fails" hidden></a></div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr>
+                            <th data-i18n="fails.col.time"></th><th>SN</th><th data-i18n="fails.col.mac"></th><th data-i18n="fails.col.reason"></th>
+                            <th class="num" data-i18n="fails.col.tp24"></th><th class="num" data-i18n="fails.col.tp5"></th>
+                            <th class="num" data-i18n="fails.col.runs"></th><th data-i18n="fails.col.log"></th>
+                        </tr></thead>
+                        <tbody id="wdFailRows"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card" id="wdBatchCard" hidden>
+                <div class="card-head"><div class="card-title" data-i18n="wd.batches"></div></div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr>
+                            <th data-i18n="lu.col.time2"></th><th data-i18n="lu.uploader"></th><th data-i18n="lu.col.source"></th>
+                            <th class="num" data-i18n="lu.col.planned"></th><th class="num" data-i18n="lu.col.new"></th>
+                            <th class="num" data-i18n="lu.col.skip"></th><th class="num" data-i18n="lu.col.fail"></th><th data-i18n="lu.col.status"></th>
+                        </tr></thead>
+                        <tbody id="wdBatchRows"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </section>

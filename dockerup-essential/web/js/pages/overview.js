@@ -1,14 +1,15 @@
-// Dashboard: seven numbers (each shown once) and four charts, from GET /api/overview.
+// Dashboard: the PASS / FAIL split, the yield and six numbers on top; four charts below
+// (yield trend, hourly output during working hours, units per month, throughput), from GET /api/overview.
 import { apiGet } from '../core/api.js';
 import * as charts from '../core/charts.js';
-import { bucketLabels, fmtInt, fmtNum, fmtPct, yieldLevel } from '../core/format.js';
+import { bucketLabels, esc, fmtInt, fmtNum, fmtPct, yieldLevel } from '../core/format.js';
 import { t } from '../core/i18n.js';
 import { queryString } from '../core/scope.js';
 import { $ } from '../core/ui.js';
 
 let seq = 0;
 const NUMBER_IDS = ['#ovYield', '#ovUnits', '#ovPass', '#ovFail', '#ovRetry', '#ovAvg24', '#ovAvg5'];
-const CHART_IDS = ['chOvTrend', 'chOvSplit', 'chOvMonthly', 'chOvTp24', 'chOvTp5'];
+const CHART_IDS = ['chOvTrend', 'chOvSplit', 'chOvHourly', 'chOvMonthly', 'chOvTp24', 'chOvTp5'];
 
 function setNumber(id, text, level) {
     const el = $(id);
@@ -80,18 +81,46 @@ function renderTrend(trend) {
     }));
 }
 
+/** The small PASS / FAIL doughnut left of the yield, with its own two-line legend. */
 function renderSplit(split) {
     const values = [split.pass || 0, split.fail || 0];
-    if (!values.some(Boolean)) { charts.chartMessage('chOvSplit', t('common.empty')); return; }
+    const legend = $('#ovSplitLegend');
     const total = values[0] + values[1];
+    if (!total) { charts.destroy('chOvSplit'); legend.textContent = '—'; return; }
+    legend.innerHTML = ['PASS', 'FAIL'].map((label, i) => `<div class="item"><div class="row">
+        <span class="sw" style="background:var(${i ? '--c-fail' : '--c-pass'})"></span><span>${label}</span>
+        <b>${esc(fmtInt(values[i]))}</b></div><div class="pct">${esc((values[i] * 100 / total).toFixed(2))}%</div></div>`).join('');
     charts.render('chOvSplit', c => ({
         type: 'doughnut',
+        data: { labels: ['PASS', 'FAIL'], datasets: [{ data: values, backgroundColor: [c.pass, c.fail], borderWidth: 0 }] },
+        options: { cutout: '64%', plugins: { legend: { display: false } }, animation: { duration: 0 } },
+    }));
+}
+
+/** Units per hour during working hours (Settings, 07:00–19:00 by default) on the latest test day of the filter. */
+function renderHourly(h) {
+    const note = $('#ovHourlyNote');
+    const pts = h?.points || [];
+    if (!h?.day || !pts.length) { note.textContent = ''; charts.chartMessage('chOvHourly', t('common.empty')); return; }
+    const parts = [t('ov.hourlyNote', { day: h.day, start: h.start, end: h.end })];
+    if (h.target) parts.push(t('ov.hourlyTarget', { n: fmtNum(h.target, 1) }));
+    if (h.before || h.after) parts.push(t('ov.hourlyOutside', { before: fmtInt(h.before), after: fmtInt(h.after), start: h.start, end: h.end }));
+    note.textContent = parts.join(t('common.dot'));
+    const labels = pts.map(p => p.hour);
+    charts.render('chOvHourly', c => ({
         data: {
-            labels: ['PASS', 'FAIL'].map((label, i) =>
-                t('ov.splitLabel', { label, n: fmtInt(values[i]), pct: (values[i] * 100 / total).toFixed(2) })),
-            datasets: [{ data: values, backgroundColor: [c.pass, c.fail], borderWidth: 0 }],
+            labels,
+            datasets: [
+                { type: 'bar', label: 'PASS', data: pts.map(p => p.pass), backgroundColor: c.pass, stack: 'u', borderRadius: 3, order: 1 },
+                { type: 'bar', label: 'FAIL', data: pts.map(p => p.fail), backgroundColor: c.fail, stack: 'u', borderRadius: 3, order: 1 },
+                ...(h.target ? [{ type: 'line', label: t('ov.targetAxis'), data: pts.map(() => h.target), borderColor: c.warn,
+                                  borderDash: [6, 4], borderWidth: 2, pointRadius: 0, order: 0 }] : []),
+            ],
         },
-        options: { cutout: '62%', plugins: { legend: { position: window.innerWidth < 900 ? 'bottom' : 'right', labels: { font: { size: 15 } } } } },
+        options: {
+            interaction: { mode: 'index', intersect: false },
+            scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: t('ov.unitsPerHour') } } },
+        },
     }));
 }
 
@@ -128,11 +157,14 @@ async function load(app) {
         if (mine !== seq) return;
         renderNumbers(data.summary, data.plan);
         if (!data.summary.total) {
-            ['chOvTrend', 'chOvSplit', 'chOvTp24', 'chOvTp5'].forEach(id => charts.chartMessage(id, t('common.empty')));
+            ['chOvTrend', 'chOvHourly', 'chOvTp24', 'chOvTp5'].forEach(id => charts.chartMessage(id, t('common.empty')));
+            renderSplit({ pass: 0, fail: 0 });
             $('#ovTrendNote').textContent = '';
+            $('#ovHourlyNote').textContent = '';
         } else {
             renderTrend(data.trend);
             renderSplit(data.split);
+            renderHourly(data.hourly);
             renderBands('chOvTp24', data.throughput.bands_24g, 'c1');
             renderBands('chOvTp5', data.throughput.bands_5g, 'c2');
         }
@@ -141,7 +173,9 @@ async function load(app) {
         if (mine !== seq) return;
         NUMBER_IDS.forEach(id => { $(id).textContent = '—'; });
         $('#ovPlan').textContent = err.message;
-        CHART_IDS.forEach(id => charts.chartMessage(id, t('common.loadFailedMsg', { error: err.message }), 'error'));
+        CHART_IDS.filter(id => id !== 'chOvSplit').forEach(id => charts.chartMessage(id, t('common.loadFailedMsg', { error: err.message }), 'error'));
+        charts.destroy('chOvSplit');
+        $('#ovSplitLegend').textContent = '—';
     }
 }
 
