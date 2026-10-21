@@ -9,7 +9,7 @@ import logging
 import threading
 
 import config
-from services import fail_classify, reports, stats, wo_notes, wo_report
+from services import fail_classify, period_reports, reports, stats, wo_notes, wo_report
 
 log = logging.getLogger("wifi.scheduler")
 
@@ -54,6 +54,8 @@ def _report_worker():
             if reports.process_queue_once():
                 continue
             if wo_report.process_once():       # structured final reports (done work orders, requests)
+                continue
+            if period_reports.process_once():  # the last finished week's / month's report, once
                 continue
             if config.REPORT_AUTO and ticks % 12 == 0:
                 reports.warm_once()

@@ -8,6 +8,8 @@
 #   1. restore the backup twice: "old" (untouched) and "prodlike"
 #   2. build the API image (tag wifitest-api:compat-check) and start it on "prodlike" with no source
 #      mounts — exactly as in production; its startup migration upgrades the database
+#      (a backup that is already upgraded — any deployment after the first — becomes "old" through
+#      rollback_web_additions.sql, whose result must equal tests/old_schema.sql, the old system's schema)
 #   3. tests/db_compat.py db: schema / data / Grafana / desktop-uploader checks (migrated mode)
 #   4. new API on the upgraded copy: tests/golden.py check (the 40 pre-refactor responses)
 #   5. the OLD API on both copies: 40 read endpoints identical; ingest / DB Tweak writes identical
@@ -69,6 +71,19 @@ done
 step "2. build $IMAGE and start it on the restored copy (no source mounts)"
 docker build -q -f "$ROOT/dockerup-essential/api/Dockerfile" -t $IMAGE "$ROOT/dockerup-essential" >/dev/null || exit 1
 api_up wifi-compat-new 18105 prodlike $IMAGE && docker logs wifi-compat-new 2>&1 | grep -E "wifi.migrations" | sed 's/^/    /'
+
+# A backup of a database this project already upgraded (every deployment after the first) is not the old system's
+# database: rebuild that one with the rollback script, and prove its schema is exactly the one the old system shipped
+# (tests/old_schema.sql, from the pre-refactor production backup) before it serves as "old" below.
+if [ "$(docker exec $DB psql -U qc -d old -Atc "SELECT to_regclass('public.app_meta') IS NOT NULL")" = t ]; then
+    step "2b. the backup is already upgraded: old = backup + rollback_web_additions.sql, checked against tests/old_schema.sql"
+    docker exec -i $DB psql -q -U qc -d old -v ON_ERROR_STOP=1 \
+        < "$ROOT/dockerup-docs/02_Maintenance/scripts/rollback_web_additions.sql" || FAILED=1
+    docker exec $DB createdb -U qc reference
+    docker exec -i $DB psql -q -U qc -d reference -v ON_ERROR_STOP=1 < "$ROOT/tests/old_schema.sql" >/dev/null || FAILED=1
+    run docker run --rm --network host -v "$ROOT/tests:/tests:ro" "$IMAGE" \
+        python3 /tests/db_compat.py db "$DSN/reference" "$DSN/old" --mode rollback --schema-only
+fi
 
 step "3. schema / data / Grafana / desktop uploader (upgraded copy vs old)"
 compat prodlike migrated

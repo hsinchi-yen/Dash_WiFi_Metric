@@ -1124,4 +1124,5 @@ export default {
     'rep.generate': '產生',
     'rep.pickDate': '請選該週或該月的任一天。',
     'rep.working': '產生中…',
+    'al.replay': '回放 {time}（前 24 小時）',
 };

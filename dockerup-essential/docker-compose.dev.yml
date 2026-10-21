@@ -6,4 +6,3 @@ services:
     volumes:
       - ./api:/app
       - ./log_parser.py:/app/log_parser.py
-      - ./wifi_dashboard.html:/app/wifi_dashboard.html

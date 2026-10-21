@@ -15,6 +15,7 @@ desktop rows stay NULL). Everything else new lives in separate objects:
   wo_report         L3 structured final report per work order
   fail_taxonomy / fail_analysis                          5F failure categories and one classification per FAIL run
   fail_disposition  5C what the line did with a FAIL run (hand-set; a later PASS closes it automatically)
+  period_report     5E weekly / monthly reports
   llm_usage         one row per LLM completion (kept 90 days)
 
 Old-database compatibility (tests/db_compat.sh must print COMPATIBLE before a deployment):
@@ -307,6 +308,21 @@ TABLES = (
         note        TEXT,
         updated_by  TEXT,
         updated_at  TIMESTAMPTZ DEFAULT NOW()
+    )""",
+    # 5E: weekly / monthly reports (facts by rules, a short summary, Markdown download)
+    """CREATE TABLE IF NOT EXISTS period_report (
+        kind         TEXT NOT NULL,
+        period_start DATE NOT NULL,
+        period_end   DATE,
+        facts        JSONB,
+        summary      JSONB,
+        source       TEXT,
+        model        TEXT,
+        rejected     JSONB,
+        elapsed_sec  REAL,
+        generated_at TIMESTAMPTZ,
+        requested_by TEXT,
+        PRIMARY KEY (kind, period_start)
     )""",
     # every LLM completion (purpose, success, duration): the call rate on the Settings page
     """CREATE TABLE IF NOT EXISTS llm_usage (

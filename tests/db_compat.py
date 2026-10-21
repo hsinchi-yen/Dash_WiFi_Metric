@@ -2,13 +2,13 @@
 """Old-database compatibility checks: does a database the new API has migrated still serve
 every old consumer exactly as before, and does the rollback script return it to the old schema?
 
-    python3 tests/db_compat.py db OLD_DSN NEW_DSN [--mode migrated|rollback]
+    python3 tests/db_compat.py db OLD_DSN NEW_DSN [--mode migrated|rollback] [--schema-only]
                                 [--grafana DASHBOARD.json] [--parser-dir DIR --sample LOG]
     python3 tests/db_compat.py oldapi OLD_URL NEW_URL --sample-dir /samples [--user qc --password qcpass]
 
-OLD_DSN is an untouched restore of the production backup, NEW_DSN the same backup after the new
-API's startup migration (--mode migrated) or after that plus rollback_web_additions.sql
-(--mode rollback). `db` needs psycopg2 (run it inside the API image); `oldapi` only needs HTTP.
+OLD_DSN is an untouched restore of the production backup (a backup this project already upgraded:
+that restore plus rollback_web_additions.sql), NEW_DSN the same backup after the new API's startup
+migration (--mode migrated) or after that plus rollback_web_additions.sql (--mode rollback). `db` needs psycopg2 (run it inside the API image); `oldapi` only needs HTTP.
 tests/db_compat.sh drives the whole run on a scratch PostgreSQL container.
 
 Checks (`db`):
@@ -255,6 +255,8 @@ def cmd_db(args):
     old_conn, new_conn = psycopg2.connect(args.old), psycopg2.connect(args.new)
     old, new = describe(old_conn), describe(new_conn)
     compare_schema(old, new, args.mode)
+    if args.schema_only:
+        return
     compare_data(old_conn, new_conn, old)
     if args.grafana:
         compare_grafana(old_conn, new_conn, args.grafana)
@@ -314,6 +316,7 @@ def main():
     d.add_argument("old")
     d.add_argument("new")
     d.add_argument("--mode", choices=("migrated", "rollback"), default="migrated")
+    d.add_argument("--schema-only", action="store_true", help="compare the schemas only (OLD may hold no data)")
     d.add_argument("--grafana")
     d.add_argument("--parser-dir")
     d.add_argument("--sample")

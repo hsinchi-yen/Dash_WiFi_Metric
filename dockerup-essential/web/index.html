@@ -36,6 +36,7 @@
         <a class="nav-item" href="#overview" data-page="overview"><span class="nav-icon">📊</span><span data-i18n="nav.overview"></span></a>
         <a class="nav-item" href="#workorders" data-page="workorders"><span class="nav-icon">📋</span><span data-i18n="nav.workorders"></span></a>
         <a class="nav-item" href="#fails" data-page="fails"><span class="nav-icon">⚠️</span><span data-i18n="nav.fails"></span></a>
+        <a class="nav-item" href="#reports" data-page="reports"><span class="nav-icon">🗓️</span><span data-i18n="nav.reports"></span></a>
         <div class="nav-label" data-i18n="nav.groupAnalysis"></div>
         <a class="nav-item" href="#rf" data-page="rf"><span class="nav-icon">📡</span><span data-i18n="nav.rf"></span></a>
         <a class="nav-item" href="#production" data-page="production"><span class="nav-icon">⚡</span><span data-i18n="nav.production"></span></a>
@@ -67,6 +68,7 @@
 
 <!-- ═══ Main ═══ -->
 <main class="main">
+    <div class="top-stack">
     <header class="topbar">
         <div class="page-head">
             <h1 class="page-title" id="pageTitle"></h1>
@@ -93,11 +95,14 @@
             <select class="select" id="productSelect" data-i18n-aria="filter.productAria"></select>
             <select class="select" id="woSelect" data-i18n-aria="filter.woAria"></select>
         </div>
+        <button class="btn small" type="button" id="btnAsk" data-i18n="ask.btn"></button>
         <div class="freshness">
             <span id="freshText"></span>
             <button class="btn small ghost" type="button" id="btnRefresh" data-i18n="fresh.refresh"></button>
         </div>
     </header>
+    <div class="alert-bar" id="alertBar" role="status" hidden></div>
+    </div>
 
     <div class="content">
 
@@ -887,6 +892,44 @@
         </div>
     </section>
 
+    <!-- ─── Reports (5E): weekly / monthly ─── -->
+    <section class="page" id="page-reports" hidden>
+        <div class="rep-layout">
+            <div class="card rep-list">
+                <div class="card-head"><div class="card-title" data-i18n="rep.listTitle"></div></div>
+                <div class="table-wrap scroll">
+                    <table>
+                        <thead><tr><th data-i18n="rep.period"></th><th class="num" data-i18n="rep.units"></th><th class="num" data-i18n="rep.yield"></th>
+                            <th class="num" data-i18n="rep.attention"></th><th data-i18n="rep.summaryBy"></th><th data-i18n="rep.generated"></th></tr></thead>
+                        <tbody id="repRows"></tbody>
+                    </table>
+                </div>
+                <div class="rep-admin mt" id="repAdmin" hidden>
+                    <div class="card-title mb-s" data-i18n="rep.genTitle"></div>
+                    <div class="toolbar">
+                        <select class="select" id="repGenKind" data-i18n-aria="rep.kind"><option value="week" data-i18n="rep.week"></option><option value="month" data-i18n="rep.month"></option></select>
+                        <input class="input" type="date" id="repGenDate" data-i18n-aria="rep.pickDate">
+                        <button class="btn primary" type="button" id="btnRepGenerate" data-i18n="rep.generate"></button>
+                    </div>
+                    <div class="field-hint mt-s" data-i18n="rep.genHint"></div>
+                    <div class="form-msg" id="repGenMsg" aria-live="polite"></div>
+                </div>
+            </div>
+            <div class="card rep-view" id="repView" hidden>
+                <div class="card-head">
+                    <div><div class="card-title" id="repTitle"></div><div class="card-note" id="repMeta"></div></div>
+                    <div class="toolbar">
+                        <button class="btn small" type="button" id="btnRepMdZh" data-i18n="rep.mdZh"></button>
+                        <button class="btn small" type="button" id="btnRepMdEn" data-i18n="rep.mdEn"></button>
+                        <button class="btn small" type="button" id="btnRepPrint" data-i18n="rep.print"></button>
+                        <button class="btn small" type="button" id="btnRepRegen" data-i18n="rep.regen" hidden></button>
+                    </div>
+                </div>
+                <div id="repBody"></div>
+            </div>
+        </div>
+    </section>
+
     <!-- ─── Settings (administrator) ─── -->
     <section class="page" id="page-settings" hidden>
         <div class="card login-card" id="setLogin" hidden>
@@ -1000,6 +1043,25 @@
             <button class="icon-btn" type="button" id="btnFdClose" data-i18n-aria="common.close">×</button>
         </div>
         <div class="modal-body" id="fdBody"></div>
+    </div>
+</div>
+
+<!-- ═══ Ask the dashboard (5E) ═══ -->
+<div class="modal" id="askModal" role="dialog" aria-modal="true" aria-labelledby="askTitle" hidden>
+    <div class="modal-panel wide">
+        <div class="modal-head">
+            <div class="modal-title" id="askTitle" data-i18n="ask.title"></div>
+            <span class="muted small-text" data-i18n="ask.note"></span>
+            <button class="icon-btn" type="button" id="btnAskClose" data-i18n-aria="common.close">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="chat-log ask-log" id="askLog" aria-live="polite"></div>
+            <div class="chips mt-s" id="askChips"></div>
+            <div class="chat-input bare mt-s">
+                <input class="input" id="askInput" maxlength="300" autocomplete="off" data-i18n-placeholder="ask.ph">
+                <button class="btn primary" type="button" id="btnAskSend" data-i18n="lu.send"></button>
+            </div>
+        </div>
     </div>
 </div>
 

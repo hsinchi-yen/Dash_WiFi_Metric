@@ -4,7 +4,7 @@
     python3 tests/acceptance_llm_budget.py [BASE]
 
 Checks: the legacy carousel request is refused and the legacy summary makes no LLM call; the old report
-store queues nothing by itself; the legacy page has no AI report menu item or carousel step; one-line notes
+store queues nothing by itself; the legacy page is gone (/legacy/ redirects to the new dashboard); one-line notes
 are AI-worded only for red / amber work orders; /api/llm-usage reports calls by purpose.
 """
 import json
@@ -45,16 +45,23 @@ check("opening an old five-section report queues nothing", q0.get("queued", 0) =
 usage1 = get("/api/llm-usage")[1]
 check("none of these made an LLM call", usage1["last_24h_total"] == usage0["last_24h_total"], (usage0["last_24h_total"], usage1["last_24h_total"]))
 
-status, html = get("/legacy/", as_text=True)
-check("legacy page: no 'AI Report — Latest WO' menu item", status == 200 and 'id="nav-ai-report"' not in html)
-start = html.index("function startScheduledCarousel()")
-body = html[start:html.index("function startCarouselScheduler()")]
-check("legacy page: the scheduled carousel only rotates pages (no AI report step)", "prefetchCarouselAiReport" not in body and "showCarouselAiReport" not in body)
+# The legacy page itself was removed at deployment (Q28): its address now redirects to the new dashboard.
+import http.client  # noqa: E402
+from urllib.parse import urlparse  # noqa: E402
+u = urlparse(BASE)
+c = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=10)
+c.request("GET", "/legacy/")
+r = c.getresponse()
+check("legacy page removed: /legacy/ → 301 to / (relative, so the :8000 port is kept)", r.status == 301 and r.getheader("Location") == "/",
+      (r.status, r.getheader("Location")))
 
 items = get("/api/wo-status")[1]["items"]
 flagged = {x["work_order"] for x in items if any(f["level"] in ("bad", "warn") for f in x["flags"])}
 ai = {x["work_order"] for x in items if x["note"]["source"] == "llm"}
-check("AI-worded notes = the red / amber work orders only", ai <= flagged and len(ai) >= len(flagged) - 1, (len(ai), len(flagged)))
+# A flagged work order whose facts just changed shows the rule sentence, marked pending, until the throttled rewrite.
+waiting = {x["work_order"] for x in items if x["work_order"] in flagged and x["note"]["source"] != "llm" and x["note"].get("pending")}
+check("AI-worded notes only for red / amber work orders; any flagged one without it is waiting for its rewrite",
+      ai <= flagged and flagged <= ai | waiting, (len(ai), len(flagged), sorted(flagged - ai - waiting)))
 
 passed = sum(results)
 print(f"\n{passed}/{len(results)} LLM budget checks passed")

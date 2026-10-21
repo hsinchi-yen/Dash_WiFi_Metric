@@ -54,8 +54,6 @@ STATS_REFRESH_SEC = int(os.environ.get("STATS_REFRESH_SEC", "300"))
 
 CORS_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("CORS_ALLOWED_ORIGINS", "*").split(",") if o.strip()] or ["*"]
 
-# The single-file dashboard (served by the API until the web/ front end replaces it).
-WEB_HTML = os.environ.get("WEB_HTML", os.path.join(APP_DIR, "wifi_dashboard.html"))
 
 # Shared quality thresholds — dashboard colours and the AI report use the same values.
 # These are the defaults; the administrator changes them on the Settings page (app_meta "settings").
@@ -74,3 +72,4 @@ REPORT_WORKER_LOCK_KEY = 7361003   # one report generation at a time across work
 UPLOAD_LOCK_KEY = 7361004          # one web upload commit at a time
 SETTINGS_LOCK_KEY = 7361005        # one settings save at a time (read-compare-write)
 FAIL_SCAN_LOCK_KEY = 7361006       # one FAIL classification scan at a time across workers
+PERIOD_REPORT_LOCK_KEY = 7361007   # one weekly / monthly report writer at a time

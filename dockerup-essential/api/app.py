@@ -7,8 +7,8 @@ WiFi YFP Dashboard — FastAPI entry point.
                sessions, product registry, web upload rules/ingest, upload AI chat)
     db.py      connection pool;  config.py  settings;  errors.py  {"error", "code", "detail"} responses
 
-Shared with the desktop tool (one directory up): log_parser.py. The single-file dashboard
-(wifi_dashboard.html) is served at "/" until the web/ front end replaces it.
+Shared with the desktop tool (one directory up): log_parser.py. The web front end (web/) is served by nginx;
+the previous single-file dashboard is no longer served (its JSON endpoints stay, tests/golden.py guards them).
 """
 import logging
 import os
@@ -23,12 +23,11 @@ for _path in (_HERE, os.path.dirname(_HERE)):   # api/ and the shared module bes
 
 from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import FileResponse  # noqa: E402
 
 import config  # noqa: E402
 import db  # noqa: E402
 import errors  # noqa: E402
-from routers import accounts, analytics, auth, failures, maintenance, products, rd, reports, settings, system, tweak, upload, workorder  # noqa: E402
+from routers import accounts, analytics, auth, failures, insights, maintenance, products, rd, reports, settings, system, tweak, upload, workorder  # noqa: E402
 from services import migrations, scheduler  # noqa: E402
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -78,20 +77,9 @@ async def timing(request: Request, call_next):
     return response
 
 
-for module in (system, analytics, reports, settings, workorder, failures, rd, auth, accounts, products, upload, tweak, maintenance):
+for module in (system, analytics, reports, settings, workorder, failures, rd, insights, auth, accounts, products, upload, tweak, maintenance):
     app.include_router(module.router)
 
-
-def _dashboard_html() -> str:
-    for candidate in (config.WEB_HTML, os.path.join(os.path.dirname(_HERE), "wifi_dashboard.html")):
-        if os.path.isfile(candidate):
-            return candidate
-    return config.WEB_HTML
-
-
-@app.get("/", include_in_schema=False)
-def index():
-    return FileResponse(_dashboard_html())
 
 
 if __name__ == "__main__":

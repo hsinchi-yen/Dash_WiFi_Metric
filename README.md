@@ -15,11 +15,18 @@ This project is designed for WiFi product factory QA data visualization and trac
 
 ## Core Capabilities
 
-1. Production data integration: parse test logs and import data into PostgreSQL.
-2. Live dashboard: show overall yield, fail list, throughput trends, and work order metrics.
-3. Auto-rotation display mode: rotate between Dashboard / Work Orders / Throughput pages.
-4. Operations toolkit: backup, restore, mount, permission-fix, and auto-start scripts.
-5. Containerized deployment: run API, PostgreSQL, and Grafana with Docker Compose.
+1. Production data integration: parse test logs and import data into PostgreSQL (desktop uploader, or the web
+   Log Upload wizard with accounts and undo).
+2. Web dashboard (`http://<host>:8000`): Trend and Forecast views (the line TV rotates them: `/?lang=zh&tv=1`), work
+   orders with status lights and one-line notes, work-order detail with final reports, the Fail List with failure
+   categories, next steps and dispositions, RF and production analysis, an anomaly banner, Ask the dashboard,
+   weekly / monthly reports, and an Advanced Analysis window for RD.
+3. The edge LLM only explains (status notes, reports, answers) — numbers always come from the database.
+4. Operations toolkit: backup, restore, deployment (`dockerup-docs/01_Deployment/deploy.sh`), mount, permission-fix,
+   and auto-start scripts; Grafana keeps working on the same database.
+5. Containerized deployment: PostgreSQL, the API, nginx (web front end) and Grafana with Docker Compose.
+
+Manuals per role: `dockerup-docs/06_Manuals/`. Working on the code: `AGENTS.md`, tests in `tests/README.md`.
 
 ## Typical Use Cases
 
@@ -30,7 +37,7 @@ This project is designed for WiFi product factory QA data visualization and trac
 
 ## Repository Structure
 
-- `dockerup-essential/`: runtime core (API, dashboard, compose, schema, parser)
+- `dockerup-essential/`: runtime core (API, web front end, compose, schema, parser)
 - `dockerup-docs/`: deployment and maintenance docs, scripts, and SOPs
 - `DB_backups/`: backup storage (not recommended to commit to Git)
 

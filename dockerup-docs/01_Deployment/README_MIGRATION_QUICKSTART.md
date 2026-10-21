@@ -37,7 +37,7 @@ sudo usermod -aG docker sit
 newgrp docker
 ```
 
-If you use the md0 mount service, it will also apply `sit:sit` ownership to `/mnt/md127`
+If you use the md127 mount service, it will also apply `sit:sit` ownership to `/mnt/md127`
 and `/mnt/md127/WIFI_YFP_DashBoard` after mount.
 
 ## 3.2) One-shot permission repair

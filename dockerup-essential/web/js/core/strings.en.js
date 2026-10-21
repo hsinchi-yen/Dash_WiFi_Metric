@@ -1124,4 +1124,5 @@ export default {
     'rep.generate': 'Write',
     'rep.pickDate': 'Choose a day of that week or month.',
     'rep.working': 'Writing…',
+    'al.replay': 'Replay of {time} (24 h before)',
 };

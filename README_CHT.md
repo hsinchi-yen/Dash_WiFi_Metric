@@ -15,11 +15,14 @@
 
 ## 核心能力
 
-1. 產線資料整合：解析測試 log 並匯入 PostgreSQL。
-2. 即時 Dashboard：顯示整體良率、失敗清單、吞吐趨勢與 Work Order 指標。
-3. 自動輪播展示：可在展示模式下自動切換 Dashboard / Work orders / Throughput。
-4. 維運工具鏈：提供備份、還原、掛載、權限修復與開機自啟腳本。
-5. 容器化部署：以 Docker Compose 啟動 API、PostgreSQL 與 Grafana。
+1. 產線資料整合：解析測試 log 並匯入 PostgreSQL（桌面上傳工具，或網頁「上傳 Log」三步驟精靈，有帳號與撤銷）。
+2. 網頁看板（`http://<主機>:8000`）：趨勢與預測（大電視輪播：`/?lang=zh&tv=1`）、工單狀態燈與一句話、工單詳情與結案報告、
+   失敗清單（失敗分類、建議動作、處置）、RF 與產出分析、提醒橫幅、問看板、週報 / 月報、RD 進階分析。
+3. edge LLM 只負責解釋（狀態一句話、報告、回答），數字一律來自資料庫。
+4. 維運工具鏈：備份、還原、部署（`dockerup-docs/01_Deployment/deploy.sh`）、掛載、權限修復與開機自啟腳本；Grafana 照常使用同一個資料庫。
+5. 容器化部署：以 Docker Compose 啟動 PostgreSQL、API、nginx（網頁前端）與 Grafana。
+
+各角色操作手冊：`dockerup-docs/06_Manuals/`；改程式前先看 `AGENTS.md`，測試見 `tests/README.md`。
 
 ## 適用場景
 

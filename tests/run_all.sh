@@ -56,12 +56,14 @@ run unit_forecast      python3 tests/unit_forecast_rules.py
 run golden             python3 tests/golden.py check "$BASE"
 run plan_revert        in_image unit_plan_revert.py
 run fail_classify      in_image check_fail_classification.py
+run unit_ask           in_image unit_ask_dashboard.py
 run accept_5a          python3 tests/acceptance_phase5a.py "$BASE"
 run accept_5b          python3 tests/acceptance_phase5b.py "$BASE"
 run accept_5f1         python3 tests/acceptance_phase5f1.py "$BASE"
 run accept_5c          python3 tests/acceptance_phase5c.py "$BASE"
 run accept_forecast    python3 tests/acceptance_forecast.py "$BASE"
 run accept_llm_budget  python3 tests/acceptance_llm_budget.py "$BASE"
+run accept_5e          python3 tests/acceptance_phase5e.py "$BASE"
 if [ -n "$SAMPLE_ZIP" ]; then
     run accept_upload  python3 tests/acceptance_upload.py "$BASE" "$SAMPLE_ZIP"
     [ $QUICK = 1 ] || run boundary_upload python3 tests/boundary_upload.py "$BASE" "$SAMPLE_ZIP"
@@ -79,6 +81,7 @@ run e2e_5f1            python3 tests/e2e_phase5f1.py "$BASE" "$SHOTS/phase5f1"
 run e2e_5c             python3 tests/e2e_phase5c.py "$BASE" "$SHOTS/phase5c"
 [ $QUICK = 1 ] || run e2e_forecast python3 tests/e2e_forecast.py "$BASE" "$SHOTS/forecast"
 run e2e_5f2            python3 tests/e2e_phase5f2.py "$BASE" "$SHOTS/phase5f2"
+run e2e_5e             python3 tests/e2e_phase5e.py "$BASE" "$SHOTS/phase5e"
 run golden_after       python3 tests/golden.py check "$BASE"
 [ -n "$COMPAT" ] && run db_compat tests/db_compat.sh "$COMPAT"
 

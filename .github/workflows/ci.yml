@@ -1,0 +1,30 @@
+# Checks that need no database and no production data (the rest run against the local stack: tests/run_all.sh).
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Python compiles
+        run: python -m compileall -q dockerup-essential/api dockerup-essential/log_parser.py tests
+      - name: Rule unit tests (no database)
+        run: |
+          python tests/unit_wo_rules.py
+          python tests/unit_fail_rules.py
+          python tests/unit_fail_actions.py
+          python tests/unit_forecast_rules.py
+      - name: i18n keys (both dictionaries, every key used)
+        run: node tests/js/i18n_keys.mjs
+      - name: JavaScript modules parse
+        run: for f in $(git ls-files 'dockerup-essential/web/js/*.js'); do node --input-type=module --check < "$f" || exit 1; done
+      - name: API image builds
+        run: docker build -f dockerup-essential/api/Dockerfile -t wifitest-api:ci dockerup-essential

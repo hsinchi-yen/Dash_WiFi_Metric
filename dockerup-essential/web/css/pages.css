@@ -287,7 +287,7 @@ details summary { cursor: pointer; color: var(--text-2); font-size: 13px; margin
 
 /* ─── Anomaly banner, Ask the dashboard, Reports (5E) ───────────────────── */
 .alert-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 24px; border-bottom: 1px solid var(--border);
-             background: var(--warn-bg); font-size: 14px; position: sticky; top: 61px; z-index: 19; }
+             background: var(--warn-bg); font-size: 14px; }
 .alert-bar.lv-bad { background: var(--bad-bg); }
 .alert-bar.lv-info { background: var(--accent-bg); }
 .alert-bar .alert-title { font-weight: 800; color: var(--text-2); }

@@ -132,9 +132,14 @@ queue = call("GET", "/api/wo-notes/queue")[1]
 check("notes stored for every work order", queue["stored"] >= 77 and queue["due"] == 0, queue)
 llm_notes = [x for x in items if x["note"]["source"] == "llm" and not x["note"]["pending"]]
 flagged_wos = [x for x in items if any(f["level"] in ("bad", "warn") for f in x["flags"])]
+# A flagged work order whose facts changed lately (other suites set and clear plans) keeps its rule sentence, marked
+# pending, until the throttled rewrite (at most every 30 minutes: the LLM budget).
+waiting = {x["work_order"] for x in flagged_wos if x["note"]["source"] != "llm" and x["note"].get("pending")}
 check("AI-worded notes only where a red / amber flag needs explaining; normal work orders use the rule sentence (LLM usage)",
-      {x["work_order"] for x in llm_notes} == {x["work_order"] for x in flagged_wos}
-      and all(x["note"]["source"] == "rule" for x in items if x not in flagged_wos), f"{len(llm_notes)} AI notes, {len(flagged_wos)} flagged")
+      {x["work_order"] for x in llm_notes} <= {x["work_order"] for x in flagged_wos}
+      <= {x["work_order"] for x in llm_notes} | waiting
+      and all(x["note"]["source"] == "rule" for x in items if x not in flagged_wos),
+      f"{len(llm_notes)} AI notes, {len(flagged_wos)} flagged, {len(waiting)} waiting for the throttled rewrite")
 bad_numbers = []
 for x in llm_notes:
     facts, _ = wo_rules.note_facts(x)

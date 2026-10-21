@@ -18,6 +18,7 @@ DROP MATERIALIZED VIEW IF EXISTS mv_unit;
 
 DROP TABLE IF EXISTS
     llm_usage,
+    period_report,
     fail_disposition,
     fail_analysis,
     fail_taxonomy,

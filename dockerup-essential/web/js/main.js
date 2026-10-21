@@ -20,8 +20,11 @@ import accounts from './pages/accounts.js';
 import settings from './pages/settings.js';
 import wodetail from './pages/wodetail.js';
 import rd from './pages/rd.js';
+import reports from './pages/reports.js';
+import * as alerts from './alerts.js';
+import * as askbox from './askbox.js';
 
-const PAGES = [overview, workorders, fails, rf, production, logupload, products, dbtweak, accounts, settings, wodetail, rd];
+const PAGES = [overview, workorders, fails, reports, rf, production, logupload, products, dbtweak, accounts, settings, wodetail, rd];
 const byId = Object.fromEntries(PAGES.map(p => [p.id, p]));
 // The line TV: the Trend page's two views, Trend ↔ Forecast. A TV address with ?tv=1 rotates at once instead of
 // after 5 idle minutes.
@@ -43,6 +46,8 @@ export const app = {
     /** Set the filter bar (e.g. a detail page's "all failures" link) before switching pages. */
     setScope(next) {
         Object.assign(this.scope, next);
+        $('#dateFrom').value = this.scope.from || '';
+        $('#dateTo').value = this.scope.to || '';
         renderRange();
         renderProductOptions();
         renderWoOptions();
@@ -289,6 +294,8 @@ function initLanguage() {
         }
         updateScopeLabel();
         report.onLangChange();
+        alerts.onLangChange();
+        askbox.onLangChange();
         PAGES.forEach(p => p.onLangChange?.(app));
         if (app.page && !app.page.isBusy?.()) loadPage();
     });
@@ -318,7 +325,7 @@ function renderAuth(user, reason) {
 const idle = { last: Date.now() };
 
 function busy() {
-    return !$('#reportModal').hidden || !$('#formModal').hidden || PAGES.some(p => p.isBusy?.());
+    return !$('#reportModal').hidden || !$('#formModal').hidden || askbox.isOpen() || PAGES.some(p => p.isBusy?.());
 }
 
 function initIdleRotation() {
@@ -340,7 +347,7 @@ async function start() {
     initLang();
     applyI18n();
     initFormModal();
-    initEscapeClose([['formModal', closeFormModal], ['failModal', closeFailDetail], ['reportModal', () => report.close()]]);
+    initEscapeClose([['formModal', closeFormModal], ['failModal', closeFailDetail], ['askModal', askbox.close], ['reportModal', () => report.close()]]);
     charts.applyDefaults();
     initTheme();
     initLanguage();
@@ -349,6 +356,8 @@ async function start() {
     initFilters();
     renderRange();
     report.init(app);
+    askbox.init(app);
+    alerts.init(app);
     PAGES.forEach(p => p.init?.(app));
     auth.onAuthChange(renderAuth);
     $('#btnLogout').addEventListener('click', auth.logout);

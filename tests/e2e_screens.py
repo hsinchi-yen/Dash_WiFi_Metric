@@ -55,8 +55,8 @@ with sync_playwright() as p:
     phone = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
     phone.goto(f"{BASE}/#overview", wait_until="networkidle"); phone.wait_for_timeout(1500)
     phone.screenshot(path=f"{OUT}/08_phone_overview.png", full_page=True); print("shot 08_phone_overview")
-    # legacy page reachable
-    r = page.goto(f"{BASE}/legacy/", wait_until="domcontentloaded"); print("legacy:", r.status, page.title())
+    # the legacy page was removed at deployment: its address lands on the new dashboard
+    r = page.goto(f"{BASE}/legacy/", wait_until="domcontentloaded"); print("legacy (removed, redirects):", r.status, page.url)
     browser.close()
 print("\n== problems:", len(problems))
 for x in problems[:30]: print("  ", x[:200])
