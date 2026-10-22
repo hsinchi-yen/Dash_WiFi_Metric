@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Browser pass for the Trend page's Forecast view (2026-10-21): the Trend ↔ Forecast switch, the latest work order's
 completion forecast (with a planned quantity set for the test and cleared again), the output forecast for all data,
-1080p without scrolling in both languages, and the TV rotation Trend ↔ Forecast (?tv=1).
+1080p without scrolling in both languages, and the TV rotation (?tv=1): latest work order Trend → Forecast → all work
+orders Trend → Forecast, 30 s each.
 
     python3 tests/e2e_forecast.py [BASE] [OUT_DIR] [admin_user admin_pass]
 
-Takes about a minute and a half (the rotation waits 30 s per step).
+Takes about three minutes (the rotation waits 30 s per step; a full cycle is four steps).
 """
 import json
 import os
@@ -104,13 +105,25 @@ try:
 
         tv = new_page("zh-TW")
         tv.goto(f"{BASE}/?tv=1&lang=zh", wait_until="networkidle")
-        check("TV address opens Trend", tv.inner_text("#pageTitle") == "趨勢")
+        latest_wo = tv.input_value("#woSelect")
+        check("TV address opens Trend on the latest work order, its product named in the header",
+              tv.inner_text("#pageTitle") == "趨勢" and latest_wo and tv.locator("#pageScope .scope-product").count() == 1,
+              (latest_wo, tv.inner_text("#pageScope")))
         tv.wait_for_function("location.hash === '#overview?view=forecast'", timeout=45000)
         tv.wait_for_timeout(1500)
-        check("after 30 s the TV shows Forecast", tv.inner_text("#pageTitle") == "預測")
+        check("after 30 s: Forecast, still the latest work order", tv.inner_text("#pageTitle") == "預測" and tv.input_value("#woSelect") == latest_wo)
         tv.wait_for_function("location.hash === '#overview'", timeout=45000)
-        tv.wait_for_timeout(800)
-        check("and 30 s later Trend again", tv.inner_text("#pageTitle") == "趨勢")
+        tv.wait_for_timeout(1500)
+        check("after 60 s: Trend for all work orders (全部產品 · 全部工單)", tv.inner_text("#pageTitle") == "趨勢" and tv.input_value("#woSelect") == ""
+              and "全部工單" in tv.inner_text("#pageScope"), (tv.input_value("#woSelect"), tv.inner_text("#pageScope")))
+        tv.wait_for_function("location.hash === '#overview?view=forecast'", timeout=45000)
+        tv.wait_for_timeout(1500)
+        check("after 90 s: Forecast for all work orders", tv.inner_text("#pageTitle") == "預測" and tv.input_value("#woSelect") == "")
+        tv.wait_for_function("location.hash === '#overview'", timeout=45000)
+        tv.wait_for_timeout(1500)
+        check("after 120 s: back to Trend on the latest work order", tv.inner_text("#pageTitle") == "趨勢" and tv.input_value("#woSelect") == latest_wo)
+        check("the TV never scrolls (1920×1080, one-row header)", tv.evaluate("document.documentElement.scrollHeight <= 1080 && "
+              "document.documentElement.scrollWidth <= 1920 && document.querySelector('.topbar').getBoundingClientRect().height < 70"))
         tv.close()
         browser.close()
 finally:

@@ -26,12 +26,15 @@ import * as askbox from './askbox.js';
 
 const PAGES = [overview, workorders, fails, reports, rf, production, logupload, products, dbtweak, accounts, settings, wodetail, rd];
 const byId = Object.fromEntries(PAGES.map(p => [p.id, p]));
-// The line TV: the Trend page's two views, Trend ↔ Forecast. A TV address with ?tv=1 rotates at once instead of
-// after 5 idle minutes.
+// The line TV: the Trend page's two views (Trend ↔ Forecast, 30 s each), first for the latest work order, then for all
+// work orders, so the scope changes every 60 s. A TV address with ?tv=1 rotates at once instead of after 5 idle minutes.
 const TV = new URLSearchParams(location.search).get('tv') === '1';
 const IDLE_MS = TV ? 0 : 5 * 60 * 1000;
 const ROTATE_MS = 30 * 1000;
-const ROTATION = ['overview', 'overview?view=forecast'];
+const ROTATION = [
+    { hash: 'overview', wo: 'latest' }, { hash: 'overview?view=forecast', wo: 'latest' },
+    { hash: 'overview', wo: 'all' }, { hash: 'overview?view=forecast', wo: 'all' },
+];
 
 export const app = {
     page: null,
@@ -97,15 +100,44 @@ async function loadPage() {
 }
 
 /* ─── Filter bar ─── */
+// The product shown in the scope: the product filter, or the product of the selected work order (the default view is
+// the latest work order with "all products", which alone would not say which product is on screen).
+function scopeProduct() {
+    if (app.scope.product) return app.scope.product;
+    const wo = app.scope.workOrder && app.options?.work_orders?.find(w => w.work_order === app.scope.workOrder);
+    return wo?.product_model || '';
+}
+
 function updateScopeLabel() {
     const el = $('#pageScope');
-    if (!app.page?.scoped) { el.textContent = ''; return; }
+    el.replaceChildren();
+    if (!app.page?.scoped) return;
+    const product = scopeProduct();
+    const all = !product && !app.scope.workOrder;     // all products, all work orders (the TV's other view)
+    if (product || all) {
+        const badge = document.createElement('span');
+        badge.className = all ? 'scope-product all' : 'scope-product';
+        badge.title = all ? '' : t('filter.productAria');
+        badge.textContent = all ? t('filter.scopeAllWo') : product;
+        el.appendChild(badge);
+    }
     const parts = [];
-    if (app.scope.product) parts.push(app.scope.product);
-    if (app.scope.workOrder) parts.push(`${t('filter.woAria')} ${app.scope.workOrder}`);
+    if (app.scope.workOrder) {     // the number next to the product; "work order" is in its tooltip (room on the TV)
+        const latest = app.scope.workOrder === app.options?.latest_work_order ? t('filter.latest') : '';
+        parts.push(`${app.scope.workOrder}${latest}`);
+    }
     const { from, to } = app.scope.range === 'custom' ? app.scope : presetRange(app.scope.range);
     if (from || to) parts.push(from === to ? from : `${from || '…'} ~ ${to || '…'}`);
-    el.textContent = parts.join(t('common.dot')) || t('filter.scopeAll');
+    const text = parts.join(t('common.dot'));
+    if (text) {
+        const span = document.createElement('span');
+        span.className = 'scope-rest';
+        span.textContent = text;
+        span.title = app.scope.workOrder ? `${t('filter.woAria')} ${text}` : text;
+        el.appendChild(span);
+        // squeezed to a few pixels by a long language on one row: leave it out (the number is in the work-order list)
+        requestAnimationFrame(() => { if (span.scrollWidth > span.clientWidth && span.clientWidth < 56) span.hidden = true; });
+    }
 }
 
 function renderRange() {
@@ -122,7 +154,9 @@ function renderWoOptions() {
         : app.options.work_orders;
     list.forEach(w => {
         const latest = w.work_order === app.options.latest_work_order ? t('filter.latest') : '';
-        const label = t('filter.woOption', { wo: w.work_order, latest, from: fmtShortDate(w.first_date), to: fmtShortDate(w.last_date) });
+        // the product in each option unless a product is already chosen
+        const label = t(app.scope.product ? 'filter.woOption' : 'filter.woOptionProduct', { wo: w.work_order, latest,
+            product: w.product_model || '—', from: fmtShortDate(w.first_date), to: fmtShortDate(w.last_date) });
         sel.appendChild(new Option(label, w.work_order));
     });
     sel.value = app.scope.workOrder;
@@ -196,7 +230,9 @@ async function loadMeta() {
 
 function renderFreshness() {
     const at = app.meta?.stats_refreshed_at;
-    $('#freshText').textContent = at ? t('fresh.label', { time: `${fmtShortDate(at)} ${fmtTime(at)}` }) : t('fresh.unknown');
+    const el = $('#freshText');      // short in the top bar; the full date and time in the tooltip
+    el.textContent = at ? t('fresh.short', { time: fmtTime(at) }) : t('fresh.unknown');
+    el.title = at ? t('fresh.label', { time: `${fmtShortDate(at)} ${fmtTime(at)}` }) : '';
 }
 
 const lights = { api: null, llm: null };
@@ -222,7 +258,7 @@ function initStatus() {
     $('#btnRefresh').addEventListener('click', async () => {
         const btn = $('#btnRefresh');
         btn.disabled = true;
-        btn.textContent = t('fresh.refreshing');
+        btn.title = t('fresh.refreshing');
         try {
             await apiPost('/api/stats/refresh');
             await Promise.all([loadMeta(), loadOptions()]);
@@ -232,7 +268,7 @@ function initStatus() {
             toast(err.message, 'bad');
         } finally {
             btn.disabled = false;
-            btn.textContent = t('fresh.refresh');
+            btn.title = t('fresh.refresh');
         }
     });
     // New data (scheduled view refresh, ingest): reload the visible page quietly. A live page (Today) also
@@ -321,8 +357,17 @@ function renderAuth(user, reason) {
     PAGES.forEach(p => p.onAuthChange?.(user, reason, app));
 }
 
-/* ─── Idle rotation: Trend ↔ Forecast every 30 s after 5 min idle (at once with ?tv=1); filters untouched ─── */
+/* ─── Idle rotation (at once with ?tv=1, else after 5 idle minutes): every 30 s the next of
+       latest work order · Trend → latest · Forecast → all work orders · Trend → all · Forecast ─── */
 const idle = { last: Date.now() };
+
+function rotationStep() {
+    // where the screen is now in ROTATION (-1: somewhere else, e.g. a product or another work order was chosen)
+    const here = location.hash.replace(/^#/, '') || 'overview';
+    const wo = !app.scope.workOrder && !app.scope.product ? 'all'
+        : app.scope.workOrder === app.latestWorkOrder() && !app.scope.product ? 'latest' : '';
+    return ROTATION.findIndex(s => s.hash === here && s.wo === wo);
+}
 
 function busy() {
     return !$('#reportModal').hidden || !$('#formModal').hidden || askbox.isOpen() || PAGES.some(p => p.isBusy?.());
@@ -335,9 +380,17 @@ function initIdleRotation() {
     setInterval(() => {
         if (Date.now() - idle.last < IDLE_MS || busy() || document.hidden) return;
         if (app.page?.id === 'wo') return;   // a work-order detail page is being read: leave it where it is
-        const here = location.hash.replace(/^#/, '') || (app.page?.id === 'overview' ? 'overview' : '');
-        const next = ROTATION[(ROTATION.indexOf(here) + 1) % ROTATION.length];
-        if (location.hash !== `#${next}`) location.hash = next;
+        const next = ROTATION[(rotationStep() + 1) % ROTATION.length];
+        const wo = next.wo === 'latest' ? app.latestWorkOrder() : '';
+        if (app.scope.workOrder !== wo || app.scope.product) {
+            app.scope.product = '';
+            app.scope.workOrder = wo;
+            renderProductOptions();
+            renderWoOptions();
+            renderRange();
+            updateScopeLabel();
+        }
+        if (location.hash !== `#${next.hash}`) location.hash = next.hash;
         else loadPage();
     }, ROTATE_MS);
 }

@@ -29,7 +29,9 @@ Production test dashboard for the WiFi / Bluetooth module test line. Read this b
    checked with `wo_rules.numbers_ok` and dropped when it carries a number that is not a fact.
 4. **Both languages.** Every user-visible string lives in both dictionaries (same keys, same `{variables}`, no Chinese
    in English); Chinese uses full-width punctuation and counts units with 台. `node tests/js/i18n_keys.mjs` checks it.
-5. **The TV.** The Trend page (Trend ↔ Forecast views, `?tv=1` rotates at once) must fit 1920×1080 without scrolling.
+5. **The TV.** The Trend page must fit 1920×1080 without scrolling, header on one row. The TV rotates every 30 s: latest
+   work order Trend → Forecast → all work orders Trend → Forecast (`?tv=1` at once, other screens after 5 idle minutes);
+   the header names the product on screen.
 6. **No deployment without explicit approval** from the owner, and never write credentials into files.
 
 ## Running it locally

@@ -55,8 +55,8 @@ code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; 
 .dot.err { background: var(--bad); }
 .dot.wait { background: var(--warn); }
 
-.main { min-width: 0; display: grid; grid-template-rows: auto 1fr; min-height: 100vh; }
-.top-stack { position: sticky; top: 0; z-index: 20; }
+.main { min-width: 0; display: grid; grid-template-rows: auto 1fr; grid-template-columns: minmax(0, 1fr); min-height: 100vh; }
+.top-stack { position: sticky; top: 0; z-index: 20; min-width: 0; }
 .topbar {
     display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
     padding: 12px 24px; background: color-mix(in srgb, var(--bg) 88%, transparent);
@@ -64,7 +64,11 @@ code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; 
 }
 .page-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
 .page-title { font-size: 22px; font-weight: 700; }
-.page-scope { font-size: 14px; color: var(--text-2); }
+.page-scope { font-size: 14px; color: var(--text-2); display: inline-flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+/* The product on screen, readable from the TV distance: the default view (latest work order) names it here. */
+.scope-product { font-size: 17px; font-weight: 700; color: var(--accent); background: var(--accent-bg);
+    border: 1px solid var(--accent); border-radius: 999px; padding: 1px 12px; white-space: nowrap; }
+.scope-product.all { color: var(--text); background: var(--surface-2); border-color: var(--border); }
 .topbar-spacer { flex: 1; }
 /* One page is visible at a time; its row is at least the remaining screen height (the overview fills it). */
 .content { padding: 20px 24px 24px; display: grid; grid-auto-rows: minmax(min-content, 1fr); }
@@ -83,8 +87,19 @@ code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; 
 }
 .select { padding-right: 6px; }
 .filters .select { max-width: 300px; }
+#productSelect { max-width: 210px; } #woSelect { max-width: 280px; }
 .input:focus, .select:focus { border-color: var(--accent); outline: none; }
-.freshness { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-3); }
+.freshness { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-3); white-space: nowrap; }
+.refresh-btn { font-size: 15px; line-height: 1; padding: 4px 8px; }
+/* Wide screens (the TV, desktops): one row. The product badge stays whole; the work-order number after it is
+   shortened first when a long language needs the room. */
+@media (min-width: 1600px) {
+    .topbar, .page-head, .page-scope, .filters { flex-wrap: nowrap; }
+    .page-head, .page-scope { min-width: 0; }
+    .page-title, .scope-product, #ovViewSeg, .filters, #btnAsk, .freshness { flex-shrink: 0; }
+    .scope-rest { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .topbar:has(#customRange:not([hidden])), .topbar:has(#customRange:not([hidden])) .filters { flex-wrap: wrap; }   /* two date fields more */
+}
 
 /* ─── Buttons, badges ───────────────────────────────────────────────────── */
 .btn {

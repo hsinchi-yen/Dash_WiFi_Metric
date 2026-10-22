@@ -76,9 +76,9 @@ llm = get("/api/meta").get("llm", {}).get("connected")
 
 
 def ask(question, lang="zh"):
-    for attempt in range(2):
+    for attempt in range(6):            # 503: the LLM is busy; 429: 6 questions a minute
         status, body = call("POST", "/api/ask", {"question": question, "lang": lang})
-        if status != 503:
+        if status not in (503, 429):
             return status, body
         time.sleep(15)
     return status, body
@@ -110,6 +110,12 @@ if llm:
     ov = get("/api/overview", work_order=latest)
     check("'5G average of the latest work order' → that work order, = the Trend page's 5G average", status == 200
           and r["query"]["work_order"] == latest and r["value"] == ov["summary"]["avg_5g"], (r.get("query"), r.get("value"), ov["summary"]["avg_5g"]))
+    status, r = ask("最近TN410 的每小時平均產出")
+    tn410 = next(w["work_order"] for w in get("/api/filter-options")["work_orders"] if w["product_model"].startswith("TN-410"))
+    uph = next(x["uph"] for x in get("/api/wo-status")["items"] if x["work_order"] == tn410)
+    check("'recent TN410 output per hour' → 台/時 of TN-410's newest work order, = the Work Orders page", status == 200
+          and r["query"]["metric"] == "uph" and r["query"]["work_order"] == tn410 and r["value"] == round(uph, 1)
+          and "台/時" in r["answer"]["zh"], (r.get("query"), r.get("value"), tn410, uph))
 else:
     print("  (LLM offline: Ask the dashboard not checked)")
 status, body = call("POST", "/api/ask", {"question": "", "lang": "zh"})

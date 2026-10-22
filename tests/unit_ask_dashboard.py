@@ -18,6 +18,7 @@ from services import period_reports as P  # noqa: E402
 results = []
 PRODUCTS = ["TN-86_PICO-IMX7", "TN-73_PICO-IMX6"]
 WOS = ["5101-260820009", "5101-260102014"]
+LATEST = {"TN-250_EDM-G-8MP": "5101-260820009", "TN-86_PICO-IMX7": "5101-260731002"}   # each product's newest work order
 NOW = datetime(2026, 10, 21, 13, 0)
 
 
@@ -28,13 +29,18 @@ def check(name, cond, detail=""):
 
 def norm(**q):
     base = {"metric": "units", "period": "all", "group_by": "none", "compare_previous": False, "product": None, "work_order": None}
-    return A.normalise({**base, **q}, PRODUCTS, WOS, NOW)
+    return A.normalise({**base, **q}, PRODUCTS, WOS, NOW, LATEST)
 
 
 check("an unknown metric becomes unsupported", norm(metric="sn_lookup")["metric"] == "unsupported")
 check("an unknown product is dropped (never widened to a guess)", norm(product="TN-99_FAKE")["product"] is None)
 check("an unknown work order is dropped", norm(work_order="9999-999999999")["work_order"] is None)
 check("'latest' → the newest work order", norm(work_order="latest")["work_order"] == WOS[0])
+check("'latest' with a product → that product's newest work order, not the newest overall (最近 TN410 …)",
+      norm(work_order="latest", product="TN-86_PICO-IMX7")["work_order"] == "5101-260731002")
+check("'latest' with a product that has no work order → the newest overall",
+      norm(work_order="latest", product="TN-73_PICO-IMX6")["work_order"] == WOS[0])
+check("output per hour (台/時) is a metric", norm(metric="uph")["metric"] == "uph" and "uph" in A.METRIC_SQL)
 check("last_n_days without n → 7 days", norm(period="last_n_days")["n"] == 7)
 check("month without year / month → this month", norm(period="month")["period"] == "this_month")
 check("custom without dates → all data", norm(period="custom")["period"] == "all")
@@ -67,6 +73,12 @@ check("answer (zh): scope, metric, value, units, the period before", "2026-09-01
 check("answer (en) has no Chinese", not any("一" <= ch <= "鿿" for ch in ans["en"]) and "yield 99.60%" in ans["en"], ans["en"])
 ans = A.answer(norm(metric="units"), {"from": None, "to": None, "value": 64181, "units": 63881})
 check("answer of units does not repeat the units in brackets", "（" not in ans["zh"] and "64,181" in ans["zh"], ans["zh"])
+ans = A.answer(norm(metric="uph", product="TN-86_PICO-IMX7", work_order="latest"),
+               {"from": None, "to": None, "value": 52.0, "units": 7020, "hours": 135})
+check("answer of output per hour: 台/時 with units and hours (zh)", "每小時產出 52.0 台/時" in ans["zh"] and "7,020 台、135 個有測試的小時" in ans["zh"]
+      and "工單 5101-260731002" in ans["zh"], ans["zh"])
+check("…and in English, no Chinese", "output per hour 52.0 units/h" in ans["en"] and "135 hours with testing" in ans["en"]
+      and not any("一" <= ch <= "鿿" for ch in ans["en"]), ans["en"])
 ans = A.answer(norm(metric="fail_categories"), {"from": "2026-09-22", "to": "2026-10-21", "categories": []})
 check("no FAIL → says so", "沒有 FAIL" in ans["zh"] and "no FAIL" in ans["en"])
 

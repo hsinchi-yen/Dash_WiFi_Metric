@@ -19,7 +19,8 @@ from services.filters import UNIT, range_where
 from services.stats import RETRY_FILTER_SQL
 from services.wo_rules import local_now
 
-METRICS = ("units", "yield", "pass", "fail", "fail_rate", "retry_rate", "avg_24g", "avg_5g", "work_orders", "fail_categories", "unsupported")
+METRICS = ("units", "yield", "pass", "fail", "fail_rate", "retry_rate", "avg_24g", "avg_5g", "uph", "work_orders", "fail_categories",
+           "unsupported")
 PERIODS = ("all", "today", "yesterday", "this_week", "last_week", "this_month", "last_month", "this_year", "last_year",
            "last_n_days", "month", "custom")
 GROUPS = ("none", "day", "week", "month", "product", "work_order")
@@ -28,14 +29,18 @@ MAX_ROWS = 31
 SYSTEM = (
     "You turn a question about a WiFi / Bluetooth module production test line into a query object for its dashboard. "
     "Today is {today} (the test stations' clock). Metrics: units (units tested), yield (% passed), pass, fail (failed units), "
-    "fail_rate, retry_rate (% of units retested), avg_24g / avg_5g (average throughput, Mbps), work_orders (how many), "
-    "fail_categories (failures by category). Periods: all, today, yesterday, this_week, last_week, this_month, last_month, "
+    "fail_rate, retry_rate (% of units retested), avg_24g / avg_5g (average throughput, Mbps), uph (output per hour: units "
+    "tested per hour with testing, the dashboard's 台/時; 每小時產出 / 產能 / 速度), work_orders (how many), fail_categories "
+    "(failures by category). Periods: all, today, yesterday, this_week, last_week, this_month, last_month, "
     "this_year, last_year, last_n_days (set n), month (set year and month), custom (set date_from and date_to, YYYY-MM-DD). "
     "group_by is 'none' unless the question asks for a split (per day / week / month / product / work order, 'by …', "
     "'each …', 'trend'); a single total or rate is group_by 'none'. product must be one of the listed products "
-    "or null; work_order one of the listed work orders, 'latest', or null. compare_previous asks for the period before. "
+    "or null; work_order one of the listed work orders, 'latest', or null. 'latest' with a product is that product's newest "
+    "work order. 最近 / 最新 / recent / latest about a product or a work order, with no time span named, means its newest "
+    "work order: work_order 'latest' and period 'all' (not today). compare_previous asks for the period before. "
     "Questions about single units, serial numbers, MAC addresses, logs, people, or anything else the metrics cannot answer: "
-    "metric 'unsupported' with a short reason. Never invent products or work orders."
+    "metric 'unsupported' with a short reason; never answer with a different metric than the one asked. Never invent "
+    "products or work orders."
 )
 
 
@@ -57,20 +62,24 @@ def schema(products: list[str], work_orders: list[str]) -> dict:
     }, "required": ["metric", "period", "group_by", "compare_previous", "product", "work_order"], "additionalProperties": False}
 
 
-def choices() -> tuple[list[str], list[str]]:
+def choices() -> tuple[list[str], list[str], dict[str, str]]:
+    """Products, the newest 40 work orders, and each product's newest work order (work orders come newest first)."""
     opts = analytics.filter_options()
-    return [p["product_model"] for p in opts["products"]], [w["work_order"] for w in opts["work_orders"][:40]]
+    latest: dict[str, str] = {}
+    for w in opts["work_orders"]:
+        latest.setdefault(w["product_model"], w["work_order"])
+    return [p["product_model"] for p in opts["products"]], [w["work_order"] for w in opts["work_orders"][:40]], latest
 
 
 def parse(question: str, lang: str, now: datetime) -> dict:
-    products, wos = choices()
+    products, wos, latest = choices()
     messages = [{"role": "system", "content": SYSTEM.format(today=now.date().isoformat())},
                 {"role": "user", "content": json.dumps({"products": products, "work_orders": wos, "question": question}, ensure_ascii=False)}]
     out = llm.complete_json(messages, schema(products, wos), name="ask_dashboard", max_tokens=300, temperature=0)
-    return normalise(out, products, wos, now)
+    return normalise(out, products, wos, now, latest)
 
 
-def normalise(q: dict, products: list[str], wos: list[str], now: datetime) -> dict:
+def normalise(q: dict, products: list[str], wos: list[str], now: datetime, latest: Optional[dict] = None) -> dict:
     """Keep only allowed values (pure apart from the lists): the LLM cannot widen what the server runs."""
     out = {"metric": q.get("metric") if q.get("metric") in METRICS else "unsupported",
            "period": q.get("period") if q.get("period") in PERIODS else "all",
@@ -79,7 +88,9 @@ def normalise(q: dict, products: list[str], wos: list[str], now: datetime) -> di
            "product": q.get("product") if q.get("product") in products else None,
            "work_order": None}
     wo = q.get("work_order")
-    if wo == "latest" and wos:
+    if wo == "latest" and out["product"] and (latest or {}).get(out["product"]):
+        out["work_order"] = latest[out["product"]]          # that product's newest work order, not the newest overall
+    elif wo == "latest" and wos:
         out["work_order"] = wos[0]
     elif wo in wos:
         out["work_order"] = wo
@@ -158,7 +169,16 @@ def _win(a, b):
             "window_end": datetime.combine(b + timedelta(days=1), datetime.min.time()) if b else None}
 
 
+def _uph(a, b, wo, pm) -> tuple[Optional[float], int]:
+    """Units per hour with testing, the dashboard's 台/時 (wo_status: units ÷ distinct clock hours with a test)."""
+    where, params = range_where(_win(a, b), wo, pm)
+    r = db.rows(f"SELECT COUNT(*) AS n, COUNT(DISTINCT date_trunc('hour', test_time)) AS h FROM {UNIT} {where}", tuple(params))[0]
+    return (round(r["n"] / r["h"], 1) if r["h"] else None), int(r["h"])
+
+
 def _scalar(metric, a, b, wo, pm) -> Optional[float]:
+    if metric == "uph":
+        return _uph(a, b, wo, pm)[0]
     s = analytics.summary(_win(a, b), wo, pm)
     if metric == "work_orders":
         where, params = range_where(_win(a, b), wo, pm, "work_order IS NOT NULL AND work_order <> ''")
@@ -177,6 +197,7 @@ METRIC_SQL = {"units": "COUNT(*)", "pass": "COUNT(*) FILTER (WHERE result = TRUE
               "fail_rate": "ROUND((COUNT(*) FILTER (WHERE result = FALSE) * 100.0 / NULLIF(COUNT(*), 0))::numeric, 2)",
               "retry_rate": f"ROUND((COUNT(*) FILTER (WHERE {RETRY_FILTER_SQL}) * 100.0 / NULLIF(COUNT(*), 0))::numeric, 2)",
               "avg_24g": "ROUND(AVG(avg_24g)::numeric, 2)", "avg_5g": "ROUND(AVG(avg_5g)::numeric, 2)",
+              "uph": "ROUND(COUNT(*)::numeric / NULLIF(COUNT(DISTINCT date_trunc('hour', test_time)), 0), 1)",
               "work_orders": "COUNT(DISTINCT work_order)"}
 
 
@@ -207,18 +228,20 @@ def _categories(a, b, wo, pm) -> list[dict]:
 
 UNIT_TEXT = {"yield": "%", "fail_rate": "%", "retry_rate": "%", "avg_24g": " Mbps", "avg_5g": " Mbps"}
 NAMES = {"zh": {"units": "測試台數", "yield": "良率", "pass": "PASS 台數", "fail": "FAIL 台數", "fail_rate": "FAIL 比例",
-                "retry_rate": "重測率", "avg_24g": "2.4G 平均吞吐量", "avg_5g": "5G 平均吞吐量", "work_orders": "工單數",
+                "retry_rate": "重測率", "avg_24g": "2.4G 平均吞吐量", "avg_5g": "5G 平均吞吐量", "uph": "每小時產出", "work_orders": "工單數",
                 "fail_categories": "失敗現象"},
          "en": {"units": "units tested", "yield": "yield", "pass": "PASS units", "fail": "FAIL units", "fail_rate": "FAIL rate",
                 "retry_rate": "retry rate", "avg_24g": "average 2.4G throughput", "avg_5g": "average 5G throughput",
-                "work_orders": "work orders", "fail_categories": "failure categories"}}
+                "uph": "output per hour", "work_orders": "work orders", "fail_categories": "failure categories"}}
 
 
-def _fmt(metric, v):
+def _fmt(metric, v, lang="en"):
     if v is None:
         return "—"
     if metric in ("units", "pass", "fail", "work_orders"):
         return f"{int(v):,}"
+    if metric == "uph":
+        return f"{float(v):,.1f} " + ("台/時" if lang == "zh" else "units/h")
     return f"{float(v):,.2f}{UNIT_TEXT.get(metric, '')}"
 
 
@@ -255,17 +278,21 @@ def answer(q: dict, res: dict) -> dict[str, str]:
                 out[lang] = f"{scope}：沒有資料。" if lang == "zh" else f"{scope}: no data."
                 continue
             best = max(rows, key=lambda r: r["value"] if r["value"] is not None else float("-inf"))
-            out[lang] = (f"{scope}的{name}分 {len(rows)} 組，最高是 {best['key']}（{_fmt(q['metric'], best['value'])}）。" if lang == "zh" else
-                         f"{scope}: {name} in {len(rows)} groups; highest {best['key']} ({_fmt(q['metric'], best['value'])}).")
+            out[lang] = (f"{scope}的{name}分 {len(rows)} 組，最高是 {best['key']}（{_fmt(q['metric'], best['value'], lang)}）。" if lang == "zh" else
+                         f"{scope}: {name} in {len(rows)} groups; highest {best['key']} ({_fmt(q['metric'], best['value'], lang)}).")
             continue
         v = res.get("value")
         units = res.get("units")
-        text = (f"{scope}：{name} {_fmt(q['metric'], v)}" if lang == "zh" else f"{scope}: {name} {_fmt(q['metric'], v)}")
-        if q["metric"] not in ("units", "work_orders") and units is not None:
+        text = (f"{scope}：{name} {_fmt(q['metric'], v, lang)}" if lang == "zh" else f"{scope}: {name} {_fmt(q['metric'], v, lang)}")
+        if q["metric"] == "uph" and units is not None and res.get("hours") is not None:
+            text += (f"（{units:,} 台、{res['hours']:,} 個有測試的小時）" if lang == "zh" else
+                     f" ({units:,} units in {res['hours']:,} hours with testing)")
+        elif q["metric"] not in ("units", "work_orders") and units is not None:
             text += f"（{units:,} 台）" if lang == "zh" else f" ({units:,} units)"
         if res.get("previous") is not None:
             pv, span = res["previous"], f"{res['previous_from']} ~ {res['previous_to']}"
-            text += (f"；前一期（{span}）{_fmt(q['metric'], pv)}" if lang == "zh" else f"; the period before ({span}) {_fmt(q['metric'], pv)}")
+            text += (f"；前一期（{span}）{_fmt(q['metric'], pv, lang)}" if lang == "zh" else
+                     f"; the period before ({span}) {_fmt(q['metric'], pv, lang)}")
         out[lang] = text + ("。" if lang == "zh" else ".")
     return out
 
@@ -281,6 +308,8 @@ def run(q: dict, now: datetime) -> dict[str, Any]:
     else:
         res["value"] = _scalar(q["metric"], a, b, wo, pm)
         res["units"] = analytics.summary(_win(a, b), wo, pm)["total"]
+        if q["metric"] == "uph":
+            res["hours"] = _uph(a, b, wo, pm)[1]
         if q["compare_previous"]:
             pa, pb = previous(q, a, b)
             res["previous"] = _scalar(q["metric"], pa, pb, wo, pm) if pa else None
