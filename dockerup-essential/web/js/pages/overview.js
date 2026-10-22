@@ -59,26 +59,45 @@ function renderNumbers(s, plan) {
     setNumber('#ovAvg5', s.total ? fmtNum(s.avg_5g, 1) : '—');
 }
 
-function renderTrend(trend) {
+// A day with fewer units than this gets no yield point (the dashboard's small-sample rule: 1 unit, 1 FAIL would be
+// a 0 % day pulling the axis down); its PASS / FAIL bar still shows.
+const DAY_YIELD_MIN_UNITS = 10;
+
+function renderTrend(trend, workOrder) {
     const pts = trend.points || [];
-    $('#ovTrendNote').textContent = pts.length ? (trend.unit === 'hour' ? t('ov.trendHour') : t('ov.trendDay')) : '';
+    const tested = pts.filter(p => p.total);
+    const daily = trend.unit === 'day';
+    const small = daily ? tested.filter(p => p.total < DAY_YIELD_MIN_UNITS).length : 0;
+    let note = pts.length ? (daily ? t('ov.trendDay') : t('ov.trendHour')) : '';
+    if (workOrder && daily && tested.length) {      // the work order's whole run, day by day
+        const [from, to] = [tested[0], tested[tested.length - 1]].map(p => bucketLabels([p], 'day')[0]);
+        note = t('ov.trendWoDays', { from, to, days: fmtInt(tested.length) });
+    }
+    if (small) note += t('ov.trendSmall', { n: DAY_YIELD_MIN_UNITS });
+    $('#ovTrendNote').textContent = note;
     if (!pts.length) { charts.chartMessage('chOvTrend', t('common.empty')); return; }
     const labels = bucketLabels(pts, trend.unit);
     charts.render('chOvTrend', c => ({
         data: {
             labels,
             datasets: [
-                { type: 'line', label: t('ov.yieldAxis'), data: pts.map(p => p.yield_pct), yAxisID: 'y',
-                  borderColor: c.good, backgroundColor: c.good, tension: 0.25, pointRadius: 3, spanGaps: true, order: 0 },
-                { type: 'bar', label: t('ov.unitsAxis'), data: pts.map(p => p.total), yAxisID: 'y1',
-                  backgroundColor: charts.alpha(c.c1, 0.55), borderRadius: 4, order: 1 },
+                { type: 'line', label: t('ov.yieldAxis'), yAxisID: 'y',
+                  data: pts.map(p => (daily && p.total < DAY_YIELD_MIN_UNITS ? null : p.yield_pct)),
+                  // per day the line is not drawn across days without testing (it would read as a gradual change)
+                  borderColor: c.good, backgroundColor: c.good, tension: 0.25, pointRadius: 3, spanGaps: !(workOrder && daily), order: 0 },
+                // units per bucket, PASS and FAIL stacked: which hour / day the failures came from
+                { type: 'bar', label: 'PASS', data: pts.map(p => p.pass ?? p.total), yAxisID: 'y1', stack: 'units',
+                  backgroundColor: charts.alpha(c.pass, 0.6), borderRadius: 4, maxBarThickness: 90, order: 1 },
+                { type: 'bar', label: 'FAIL', data: pts.map(p => p.fail ?? 0), yAxisID: 'y1', stack: 'units',
+                  backgroundColor: c.fail, borderRadius: 4, maxBarThickness: 90, order: 1 },
             ],
         },
         options: {
             interaction: { mode: 'index', intersect: false },
             scales: {
                 y: { position: 'left', suggestedMin: 90, max: 100, title: { display: true, text: t('ov.yieldAxis') } },
-                y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: t('ov.unitsAxis') } },
+                y1: { position: 'right', beginAtZero: true, stacked: true, grid: { drawOnChartArea: false }, title: { display: true, text: t('ov.unitsAxis') } },
+                x: { stacked: true },
             },
         },
     }));
@@ -182,7 +201,7 @@ async function load(app) {
             $('#ovTrendNote').textContent = '';
             $('#ovHourlyNote').textContent = '';
         } else {
-            renderTrend(data.trend);
+            renderTrend(data.trend, app.scope.workOrder);
             renderSplit(data.split);
             renderHourly(data.hourly);
             renderBands('chOvTp24', data.throughput.bands_24g, 'c1');

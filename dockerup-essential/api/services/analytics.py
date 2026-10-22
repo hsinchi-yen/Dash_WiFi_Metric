@@ -16,7 +16,7 @@ from services.filters import UNIT, range_where, resolve_range_window
 from services.stats import FAIL_REASON_SQL, RETRY_FILTER_SQL
 from services.wo_rules import local_now
 
-HOUR_BUCKET_MAX_DAYS = 2      # ≤ 2 days of data → hourly trend, otherwise daily
+HOUR_BUCKET_MAX_DAYS = 2      # ≤ 2 days of data → hourly trend, otherwise daily (a selected work order: daily, see trend())
 STDDEV_TOP = 20
 
 
@@ -74,11 +74,17 @@ def summary(window: dict, work_order, product_model) -> dict[str, Any]:
 
 
 def trend(window: dict, work_order, product_model) -> dict[str, Any]:
+    """Yield and units per hour or per day. A selected work order is drawn per day over its whole run (first to last
+    test day, idle days included) — the Hourly Output chart beside it shows its latest test day hour by hour; only a
+    single day (one test day, or a one-day range such as Today) stays hourly."""
     bounds = _bounds(window, work_order, product_model)
     if not bounds:
         return {"unit": "day", "points": []}
     lo, hi = bounds
-    unit = "hour" if (hi - lo) <= timedelta(days=HOUR_BUCKET_MAX_DAYS) else "day"
+    if work_order and (hi - lo) > timedelta(days=1):
+        unit = "day"
+    else:
+        unit = "hour" if (hi - lo) <= timedelta(days=HOUR_BUCKET_MAX_DAYS) else "day"
     where, params = range_where(window, work_order, product_model)
     rows = db.rows(f"""
     WITH buckets AS (
@@ -98,9 +104,9 @@ def trend(window: dict, work_order, product_model) -> dict[str, Any]:
     """, (lo, hi, *params))
     points = []
     for r in rows:
-        total = int(r["total"] or 0)
-        points.append({"t": r["t"], "total": total,
-                       "yield_pct": _num(int(r["pass"] or 0) * 100.0 / total) if total else None})
+        total, passed = int(r["total"] or 0), int(r["pass"] or 0)
+        points.append({"t": r["t"], "total": total, "pass": passed, "fail": total - passed,
+                       "yield_pct": _num(passed * 100.0 / total) if total else None})
     # Hourly view of a single day: drop the leading/trailing empty hours so the chart reads well.
     if unit == "hour":
         idx = [i for i, p in enumerate(points) if p["total"]]

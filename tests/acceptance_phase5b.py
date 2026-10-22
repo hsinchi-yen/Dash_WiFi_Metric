@@ -73,6 +73,20 @@ allp = call("GET", "/api/overview")[1]["hourly"]
 check("all products in view → no single target line", allp["target"] is None)
 check("legacy endpoints unchanged (overview still carries split, trend, monthly)", {"split", "trend", "monthly", "throughput"} <= set(ov))
 
+# ── Dashboard: a selected work order's yield trend is daily over its whole run (2026-10-22) ──
+tr = ov["trend"]
+check("a selected work order → daily yield trend over its run (first to last test day), PASS + FAIL per day",
+      tr["unit"] == "day" and tr["points"][0]["t"].startswith(ov["summary"]["first_test"][:10])
+      and tr["points"][-1]["t"].startswith(ov["summary"]["last_test"][:10])
+      and all(p["pass"] + p["fail"] == p["total"] for p in tr["points"]) and sum(p["total"] for p in tr["points"]) == ov["summary"]["total"],
+      (tr["unit"], tr["points"][0]["t"], tr["points"][-1]["t"]))
+long = call("GET", "/api/overview" + q(work_order="5101-260527003"))[1]["trend"]
+check("…a long one includes its idle days (TN-410 5101-260527003: 36 days, 18 with tests)",
+      long["unit"] == "day" and len(long["points"]) == 36 and sum(1 for p in long["points"] if p["total"]) == 18, (len(long["points"])))
+one = call("GET", "/api/overview" + q(work_order=NORMAL[0], date_from="2026-10-01", date_to="2026-10-01"))[1]["trend"]
+check("…a one-day range stays hourly", one["unit"] == "hour", one["unit"])
+check("no work order: the earlier rule (all data → daily)", call("GET", "/api/overview")[1]["trend"]["unit"] == "day")
+
 # ── Detail ──
 check("unknown work order → 404", call("GET", "/api/wo-detail" + q(work_order="5101-999999999"))[0] == 404)
 d = call("GET", "/api/wo-detail" + q(work_order=RED[0], product_model=RED[1]))[1]

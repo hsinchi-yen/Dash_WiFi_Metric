@@ -94,6 +94,8 @@ export default {
     'ov.trend': '良率趨勢',
     'ov.trendHour': '每小時',
     'ov.trendDay': '每日',
+    'ov.trendWoDays': '每日 · 整張工單 {from}–{to} · {days} 個測試日',
+    'ov.trendSmall': '（少於 {n} 台的日子不畫良率）',
     'ov.split': 'PASS / FAIL 分布',
     'ov.splitLabel': '{label}  {n}（{pct}%）',
     'ov.monthly': '每月產量',

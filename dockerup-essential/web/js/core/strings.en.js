@@ -94,6 +94,8 @@ export default {
     'ov.trend': 'Yield Trend',
     'ov.trendHour': 'Hourly',
     'ov.trendDay': 'Daily',
+    'ov.trendWoDays': 'Daily · whole work order {from}–{to} · {days} test days',
+    'ov.trendSmall': ' (no yield point for days under {n} units)',
     'ov.split': 'PASS / FAIL Split',
     'ov.splitLabel': '{label}  {n} ({pct}%)',
     'ov.monthly': 'Units per Month',
