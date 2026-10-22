@@ -3,7 +3,8 @@
 #
 #   tests/run_all.sh [--quick] [--compat <backup.dump>]
 #
-#   --quick    skip the long ones (upload boundary tests, the TV rotation pass, the 5F-2 scan wait, the desktop path)
+#   --quick    skip the long ones (upload boundary tests, the TV rotation pass, the 5F-2 scan wait, the desktop path,
+#              the LLM-baseline wait)
 #   --compat   also run tests/db_compat.sh on that production backup (≈ 5 min)
 #
 # Environment: BASE (default http://127.0.0.1:8000), SAMPLE_ZIP (the delivery zip the upload tests use,
@@ -87,6 +88,8 @@ run e2e_5f2            python3 tests/e2e_phase5f2.py "$BASE" "$SHOTS/phase5f2"
 run e2e_5e             python3 tests/e2e_phase5e.py "$BASE" "$SHOTS/phase5e"
 # old upload ways (desktop tool, batch command) → analysed by the running stack; waits for its 5-min refresh
 [ $QUICK = 1 ] || [ -z "$OLD_DIR" ] || run desktop_path in_image acceptance_desktop_path.py "$BASE"
+# a new batch makes no LLM call about the product's finished work orders (waits for the report / note workers)
+[ $QUICK = 1 ] || [ -z "$OLD_DIR" ] || run llm_baseline in_image acceptance_llm_baseline.py "$BASE"
 run golden_after       python3 tests/golden.py check "$BASE"
 [ -n "$COMPAT" ] && run db_compat tests/db_compat.sh "$COMPAT"
 

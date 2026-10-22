@@ -71,6 +71,30 @@ def _codes(flags):
     return sorted(f.get("code") for f in flags or [])
 
 
+# The product's baselines (usual medians, hourly target, and the flag values derived from them) move with every new
+# batch of that product. An AI note of a finished work order is not rewritten for that: it still describes the work
+# order as long as its own facts and flags are the same and every number in it is still a fact (LLM usage; numbers only
+# from the database). In-progress work orders keep the 30-minute rule.
+BASELINE_KEYS = ("uph_target", "hist_p50_24g", "hist_p50_5g")
+
+
+def _own(facts: Optional[dict]) -> str:
+    own = {k: v for k, v in (facts or {}).items() if k not in BASELINE_KEYS}
+    own["flags"] = _codes((facts or {}).get("flags"))
+    return json.dumps(own, sort_keys=True, default=str)
+
+
+def up_to_date(stored: dict, status: dict, facts: dict, digest: str) -> bool:
+    """The stored note still describes the work order: written from these facts, or an AI note of a finished work order
+    whose own facts are unchanged and whose numbers are all still facts."""
+    if stored["facts_hash"] == digest:
+        return True
+    if not (stored["source"] == "llm" and status.get("state") == "done" and _own(stored.get("facts")) == _own(facts)):
+        return False
+    extra = (status.get("work_order") or "", status.get("product_model") or "")
+    return all(numbers_ok(stored.get(c) or "", facts, extra)[0] for c in ("text_zh", "text_en"))
+
+
 def _stored(conn, keys=None) -> dict:
     rows = db.fetch_all(conn, "SELECT * FROM wo_status_note") if keys is None else db.fetch_all(
         conn, "SELECT * FROM wo_status_note WHERE (work_order, product_model) IN %s", (tuple(keys),)) if keys else []
@@ -79,8 +103,8 @@ def _stored(conn, keys=None) -> dict:
 
 def current_note(status: dict, stored: Optional[dict]) -> dict:
     """The note to show: the stored one when it was written from the current facts, else the rule sentence."""
-    _, digest = note_facts(status)
-    if stored and stored["facts_hash"] == digest:
+    facts, digest = note_facts(status)
+    if stored and up_to_date(stored, status, facts, digest):
         return {"zh": stored["text_zh"], "en": stored["text_en"], "source": stored["source"],
                 "generated_at": stored["created_at"].isoformat() if stored["created_at"] else None, "pending": False}
     return {"zh": rule_note(status, "zh"), "en": rule_note(status, "en"), "source": "rule", "generated_at": None,
@@ -183,9 +207,9 @@ def _due(statuses: dict, stored: dict) -> list:
     for k, st in statuses.items():
         if st.get("state") == "no_data":
             continue
-        _, digest = note_facts(st)
+        facts, digest = note_facts(st)
         row = stored.get(_key(*k))
-        if row and row["facts_hash"] == digest:
+        if row and up_to_date(row, st, facts, digest):
             if row["source"] == "llm" or not row["error"]:
                 continue
             if row["created_at"] and now - row["created_at"].timestamp() < RETRY_SEC:

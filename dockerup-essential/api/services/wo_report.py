@@ -141,6 +141,35 @@ def _status(key):
     return wo_status.statuses()[key]
 
 
+# The product's baselines move with every new batch of that product (the usual 2.4G / 5G medians, the hourly target,
+# and with them the values inside the flags). An AI-written report of a work order is not rewritten for that as long as
+# every number it states is still a fact (LLM usage; numbers only from the database). A change in the work order's own
+# facts makes it due again. Rule reports cost nothing and follow every change.
+BASELINE_FACTS = ("usual_p50_24g", "usual_p50_5g", "uph_target")
+
+
+def own_digest(f: dict) -> str:
+    own = {k: v for k, v in (f or {}).items() if k not in BASELINE_FACTS}
+    own["flags"] = sorted([x.get("code"), x.get("level")] for x in (f or {}).get("flags") or [])
+    return hashlib.sha1(json.dumps({"v": REPORT_VERSION, **own}, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _texts(report) -> list[str]:
+    return [t for part in (report or {}).values() if isinstance(part, dict)
+            for v in part.values() for t in (v if isinstance(v, list) else [v]) if isinstance(t, str) and t]
+
+
+def up_to_date(row: dict, f: dict, digest: str) -> bool:
+    """The stored report still describes the work order: the same facts, or, for an AI-written one, the same own facts
+    and every number in it still a fact."""
+    if row["facts_hash"] == digest:
+        return True
+    if row["source"] != "llm" or not row.get("facts") or own_digest(row["facts"]) != own_digest(f):
+        return False
+    extra = (f.get("work_order") or "", f.get("product_model") or "")
+    return all(numbers_ok(t, f, extra)[0] for t in _texts(row.get("report")))
+
+
 def needs_llm(key: tuple, f: dict) -> bool:
     """An automatic report is AI-written only when there is something to explain: a red or amber flag or a
     notable change from the previous work order. A normal work order gets the rule summary (LLM usage)."""
@@ -268,7 +297,7 @@ def get(key: tuple) -> dict[str, Any]:
     st = _status(key)
     auto = config.WO_REPORT_AUTO and st["state"] == "done"
     if row and row["report"]:
-        state = "ready" if row["facts_hash"] == digest else "stale"
+        state = "ready" if up_to_date(row, f, digest) else "stale"
     else:
         state = "none"
     pending = bool(row and row["requested_at"]) or (auto and state != "ready")
@@ -293,7 +322,7 @@ def request(key: tuple, who: Optional[str]) -> None:
 
 def _due(conn) -> list:
     statuses = wo_status.statuses()
-    rows = {(r["work_order"], r["product_model"]): r for r in db.fetch_all(conn, "SELECT work_order, product_model, facts_hash, source, error, created_at, requested_at FROM wo_report")}
+    rows = {(r["work_order"], r["product_model"]): r for r in db.fetch_all(conn, "SELECT work_order, product_model, facts_hash, facts, source, error, created_at, requested_at FROM wo_report")}
     requested, auto = [], []
     now = time.time()
     for key, st in statuses.items():
@@ -303,8 +332,8 @@ def _due(conn) -> list:
             continue
         if not (config.WO_REPORT_AUTO and st["state"] == "done"):
             continue
-        _, digest = facts(key) if row else (None, None)
-        if row and row["facts_hash"] == digest:
+        f, digest = facts(key) if row else (None, None)
+        if row and up_to_date(row, f, digest):
             if row["source"] == "llm" or (row["created_at"] and now - row["created_at"].timestamp() < RETRY_SEC):
                 continue
         auto.append((-(st["last_test"].timestamp() if st.get("last_test") else 0), key))
