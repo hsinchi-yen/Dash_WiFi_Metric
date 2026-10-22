@@ -14,6 +14,7 @@ import db
 from services import filters
 from services.filters import UNIT, resolve_dashboard_window, resolve_rf_window
 from services.migrations import REFRESHED_AT_KEY, meta_set, now_iso
+from services.wo_rules import local_now
 
 log = logging.getLogger("wifi.stats")
 
@@ -186,7 +187,7 @@ def available_years(work_order, product_model) -> dict[str, Any]:
     ORDER BY year DESC
     """, tuple(params))
     years = [int(r["year"]) for r in rows if r.get("year") is not None]
-    now_year = datetime.now().year
+    now_year = local_now(config.LOCAL_TZ).year
     return {"years": years or [now_year], "current_year": now_year}
 
 

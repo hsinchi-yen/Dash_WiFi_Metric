@@ -22,14 +22,13 @@ import json
 import re
 import time
 import zipfile
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
 import config
 import db
 from services import fail_taxonomy, llm
-from services.wo_rules import numbers_ok
+from services.wo_rules import local_now, numbers_ok
 
 RD_STATUSES = ("new", "confirmed", "reclassified", "closed")
 TEXT_LIMITS = {"rd_owner": 64, "rd_note": 500, "rd_action": 200}
@@ -455,4 +454,4 @@ def ask(f: dict, question: str, lang: str) -> dict[str, Any]:
                 rejected.append({"field": field, "text": text, "numbers": bad, "language": bool(wrong_lang), "code": code})
         clean[field] = (kept[0] if kept else "") if field == "summary" else kept
     return {"facts": fx, "answer": clean, "rejected": rejected, "elapsed": round(time.perf_counter() - t0, 1),
-            "model": llm.model_name(), "at": datetime.now().isoformat(timespec="seconds")}
+            "model": llm.model_name(), "at": local_now(config.LOCAL_TZ).isoformat(timespec="seconds")}

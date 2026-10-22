@@ -16,6 +16,7 @@ from datetime import date
 from typing import Any, Optional
 
 import config
+from services.wo_rules import local_now
 
 DASHES = dict.fromkeys(map(ord, "‐‑‒–—−－"), "-")
 WO_RE = re.compile(r"^(\d{4}|NOWO)-(\d{2})(\d{2})(\d{2})(\d{3})$")
@@ -183,7 +184,7 @@ def validate(facts: dict, fields: dict, ctx: dict) -> list[dict]:
         if wo_check.get("nowo"):
             issues.append(_issue("R5", "info", f"{work_order} 是無工單號批次；此批不與生產工單關聯，工單類統計僅供參考。",
                                  f"{work_order} is a no-work-order batch; it is not linked to a production work order.", value=work_order))
-        today = ctx.get("today") or date.today()
+        today = ctx.get("today") or local_now(config.LOCAL_TZ).date()   # the stations' date, not the container's (UTC)
         wo_date = wo_check.get("date")
         first = _as_date(facts.get("first_test"))
         if wo_date and wo_date > today:

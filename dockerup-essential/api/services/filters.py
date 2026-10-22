@@ -9,7 +9,9 @@ Both resolvers keep the exact semantics of the original single-file API:
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
+import config
 import db
+from services.wo_rules import local_now
 
 UNIT = "mv_unit"
 
@@ -40,7 +42,7 @@ def _as_datetime(value):
 def resolve_dashboard_window(scope: str, year: Optional[int], work_order: Optional[str] = None,
                              product_model: Optional[str] = None) -> Optional[dict[str, Any]]:
     if scope == "year":
-        target_year = int(year or datetime.now().year)
+        target_year = int(year or local_now(config.LOCAL_TZ).year)
         return {
             "scope": "year",
             "year": target_year,

@@ -41,6 +41,7 @@ import log_parser
 from errors import ApiError, Msg
 from services import auth_utils, products, stats
 from services import upload_rules as rules
+from services.wo_rules import local_now
 
 log = logging.getLogger("wifi.upload")
 
@@ -375,7 +376,7 @@ def owned_upload(conn, upload_id, identity, not_found=Msg("找不到這個上傳
 
 def next_nowo(conn, today: Optional[date] = None) -> str:
     """NOWO-<today><seq>: the first sequence not used by test_record, wo_plan or a running/finished upload."""
-    today = today or date.today()
+    today = today or local_now(config.LOCAL_TZ).date()      # the stations' date (the container runs on UTC)
     prefix = f"{rules.NOWO_PREFIX}-{today:%y%m%d}"
     rows = db.fetch_all(conn, """
         SELECT work_order FROM test_record WHERE work_order LIKE %s
@@ -404,7 +405,7 @@ def resolve_fields(conn, registry: products.Registry, work_order_in, product_in,
 def db_context(conn, facts: dict, fields: dict, manifest: Optional[dict] = None) -> dict:
     work_order = fields.get("work_order")
     canonical = fields["product"].get("canonical") or (fields["product"].get("proposal") if fields["product"].get("status") == "new" else None)
-    ctx: dict[str, Any] = {"today": date.today(), "nowo_preview": fields.get("nowo_preview"),
+    ctx: dict[str, Any] = {"today": local_now(config.LOCAL_TZ).date(), "nowo_preview": fields.get("nowo_preview"),
                            "existing_same": 0, "existing_other": [], "wo_products": [], "prev_plan": None, "cumulative_sn": None}
     for r in facts.get("existing") or []:
         if work_order and canonical and r["work_order"] == work_order and r["product_model"] == canonical:

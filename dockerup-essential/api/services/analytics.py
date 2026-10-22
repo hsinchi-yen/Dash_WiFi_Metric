@@ -9,10 +9,12 @@ import math
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
+import config
 import db
 from services import settings
 from services.filters import UNIT, range_where, resolve_range_window
 from services.stats import FAIL_REASON_SQL, RETRY_FILTER_SQL
+from services.wo_rules import local_now
 
 HOUR_BUCKET_MAX_DAYS = 2      # ≤ 2 days of data → hourly trend, otherwise daily
 STDDEV_TOP = 20
@@ -112,7 +114,7 @@ def monthly(year: Optional[int], work_order, product_model) -> dict[str, Any]:
     work order / product only)."""
     if not year:
         row = db.rows(f"SELECT EXTRACT(YEAR FROM MAX(test_time))::int AS y FROM {UNIT}")[0]
-        year = int(row["y"]) if row["y"] else datetime.now().year
+        year = int(row["y"]) if row["y"] else local_now(config.LOCAL_TZ).year
     window = {"window_start": datetime(year, 1, 1), "window_end": datetime(year + 1, 1, 1)}
     where, params = range_where(window, work_order, product_model)
     rows = db.rows(f"""

@@ -59,6 +59,7 @@ run golden             python3 tests/golden.py check "$BASE"
 run plan_revert        in_image unit_plan_revert.py
 run fail_classify      in_image check_fail_classification.py
 run unit_ask           in_image unit_ask_dashboard.py
+run unit_local_date    in_image unit_local_date.py
 run accept_5a          python3 tests/acceptance_phase5a.py "$BASE"
 run accept_5b          python3 tests/acceptance_phase5b.py "$BASE"
 run accept_5f1         python3 tests/acceptance_phase5f1.py "$BASE"
