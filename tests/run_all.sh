@@ -56,6 +56,7 @@ run unit_wo_rules      python3 tests/unit_wo_rules.py
 run unit_fail_rules    python3 tests/unit_fail_rules.py
 run unit_fail_actions  python3 tests/unit_fail_actions.py
 run unit_forecast      python3 tests/unit_forecast_rules.py
+run unit_llm_probe     python3 tests/unit_llm_probe.py
 run golden             python3 tests/golden.py check "$BASE"
 run plan_revert        in_image unit_plan_revert.py
 run fail_classify      in_image check_fail_classification.py

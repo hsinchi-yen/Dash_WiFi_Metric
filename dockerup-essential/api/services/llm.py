@@ -1,4 +1,4 @@
-"""The local LLM (llama.cpp behind an OpenAI-compatible API): status probe and chat.
+"""The local LLM (vLLM since 2026-11, before that llama.cpp; OpenAI-compatible API): status probe and chat.
 
 Every completion is logged in llm_usage (purpose, success, duration) so the call rate can be watched
 (GET /api/llm-usage, Settings page). The status probe (/models) is not a completion and is not logged."""
@@ -22,27 +22,47 @@ def _headers():
     return {"Content-Type": "application/json", "Authorization": f"Bearer {config.LLM_API_KEY}"}
 
 
+def check_models(models: list) -> tuple[Optional[str], Optional[str]]:
+    """(model to report, error) from the /models list. vLLM answers 404 to a chat request naming a model it does not
+    serve, so LLM_MODEL must be one of the listed ids (2026-11-23: the host moved to vLLM, the old name stayed in the
+    config and every AI feature failed while this probe still said "connected"). llama.cpp ignores the requested name
+    and lists whatever file it loaded, so a llama.cpp server is not held to the name."""
+    entries = [m for m in models if isinstance(m, dict) and m.get("id")]
+    ids = [m["id"] for m in entries]
+    if config.LLM_MODEL in ids:
+        return config.LLM_MODEL, None
+    if not ids or any(str(m.get("owned_by", "")).lower() == "llamacpp" for m in entries):
+        return (ids[0] if ids else None), None
+    return None, f"LLM_MODEL {config.LLM_MODEL!r} is not served (available: {', '.join(ids)[:150]})"
+
+
 def probe() -> bool:
+    error = None
     try:
         req = urllib.request.Request(f"{config.LLM_API_BASE}/models", headers=_headers())
         with urllib.request.urlopen(req, timeout=config.LLM_STATUS_TIMEOUT) as response:
             ok = response.status == 200
             try:
-                served = (json.loads(response.read().decode("utf-8")).get("data") or [{}])[0].get("id")
+                models = json.loads(response.read().decode("utf-8")).get("data") or []
             except Exception:
-                served = None
-            if ok and served:
+                models = []
+            served, error = check_models(models)
+            if error:
+                ok = False
+                if _state.get("error") != error:      # once per change, not every probe
+                    log.warning("LLM offline: %s", error)
+            elif ok and served:
                 with _lock:
                     _state["served_model"] = served
     except Exception as exc:  # network / HTTP errors all mean "not connected"
         ok = False
-        _state["error"] = str(exc)[:200]
+        error = str(exc)[:200]
     with _lock:
         _state["connected"] = ok
         _state["checked_at"] = time.time()
+        _state["error"] = None if ok else error
         if ok:
             _state["last_ok_at"] = time.time()
-            _state["error"] = None
     return ok
 
 
