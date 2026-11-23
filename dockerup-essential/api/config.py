@@ -27,10 +27,11 @@ PLAN_QTY_MAX = 99999
 PLAN_QTY_WARN = 10000
 LLM_CHAT_TIMEOUT = 60                            # per assistant call; the uploader falls back to the form
 
-# Local LLM (llama.cpp, OpenAI-compatible). Defaults keep the pre-refactor behaviour.
+# Local LLM (vLLM since 2026-11, OpenAI-compatible). vLLM rejects an unknown model name with 404
+# (llama.cpp ignored it), so LLM_MODEL must match an id from GET /v1/models.
 LLM_API_BASE = os.environ.get("LLM_API_BASE", "http://10.20.30.23:8000/v1")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "tn8227")
-LLM_MODEL = os.environ.get("LLM_MODEL", "Qwen3.6-35B-A3B-Q6_K")
+LLM_MODEL = os.environ.get("LLM_MODEL", "Qwen3.8-27B-FP8")
 LLM_STATUS_TIMEOUT = 3          # seconds for the /models probe
 LLM_STATUS_CACHE_SEC = 20       # the old page polls every 30 s per tab; one probe serves them all
 LLM_SUMMARY_TIMEOUT = 180
