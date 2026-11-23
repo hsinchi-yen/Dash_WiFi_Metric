@@ -19,6 +19,7 @@ os.environ["LLM_MODEL"] = "Qwen3.8-27B-FP8"
 import config  # noqa: E402
 from services import llm  # noqa: E402
 
+llm._log = lambda *a, **k: None      # llm_usage needs the database; without one psycopg2 would wait on the connect
 results = []
 # kind: vllm | llamacpp | llamacpp_new (models under "data" and "models"); ids served; models_status; content
 SRV = {"kind": "vllm", "ids": ["Qwen3.8-27B-FP8", "Qwen3.8-27B-UD-Q6_K_L"], "models_status": 200,
