@@ -1,9 +1,20 @@
-"""The local LLM (vLLM since 2026-11, before that llama.cpp; OpenAI-compatible API): status probe and chat.
+"""The local LLM behind an OpenAI-compatible API: status probe and chat. Works with vLLM and llama.cpp.
+
+The two servers differ in ways that matter here:
+  - vLLM answers 404 "The model `X` does not exist" to a model name it does not serve; llama.cpp ignores the name.
+    The probe therefore reads /v1/models and sends LLM_MODEL only when it is listed, otherwise the served model
+    (2026-11-23: the host moved from llama.cpp to vLLM, the old name stayed in the config and every AI call failed
+    while the status light stayed green). A chat refused for its model name re-probes and is retried once, so a
+    model swapped on the host while the API runs is picked up on the next call.
+  - llama.cpp lists its models under "data" (and, in newer builds, also "models"); ids are often file names.
+  - Without a reasoning parser a thinking model may put "<think>…</think>" into the content; with one (vLLM) the
+    content can be null when the answer was cut off. Both are normalised by _content().
 
 Every completion is logged in llm_usage (purpose, success, duration) so the call rate can be watched
 (GET /api/llm-usage, Settings page). The status probe (/models) is not a completion and is not logged."""
 import json
 import logging
+import re
 import threading
 import time
 import urllib.error
@@ -14,26 +25,50 @@ import config
 
 log = logging.getLogger("wifi.llm")
 
-_state = {"connected": False, "checked_at": 0.0, "last_ok_at": None, "error": None}
+_state = {"connected": False, "checked_at": 0.0, "last_ok_at": None, "error": None,
+          "request_model": None, "served_model": None, "backend": None, "note": None}
 _lock = threading.Lock()
+
+_THINK = re.compile(r"^\s*<think>.*?</think>\s*", re.S)
+_FENCE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.S)
 
 
 def _headers():
     return {"Content-Type": "application/json", "Authorization": f"Bearer {config.LLM_API_KEY}"}
 
 
-def check_models(models: list) -> tuple[Optional[str], Optional[str]]:
-    """(model to report, error) from the /models list. vLLM answers 404 to a chat request naming a model it does not
-    serve, so LLM_MODEL must be one of the listed ids (2026-11-23: the host moved to vLLM, the old name stayed in the
-    config and every AI feature failed while this probe still said "connected"). llama.cpp ignores the requested name
-    and lists whatever file it loaded, so a llama.cpp server is not held to the name."""
-    entries = [m for m in models if isinstance(m, dict) and m.get("id")]
+def model_entries(payload) -> list[dict]:
+    """The model list of a /models answer, as dicts that have an "id" (vLLM, OpenAI, llama.cpp old and new)."""
+    if not isinstance(payload, dict):
+        return []
+    out = []
+    for key in ("data", "models"):
+        for m in payload.get(key) or []:
+            if isinstance(m, dict):
+                mid = m.get("id") or m.get("model") or m.get("name")
+                if mid and all(e["id"] != mid for e in out):
+                    out.append({**m, "id": str(mid)})
+    return out
+
+
+def backend_of(entries: list[dict]) -> Optional[str]:
+    owners = {str(m.get("owned_by", "")).lower() for m in entries}
+    if "vllm" in owners:
+        return "vllm"
+    if "llamacpp" in owners or "llama.cpp" in owners:
+        return "llamacpp"
+    return next(iter(owners - {""}), None)
+
+
+def resolve_model(entries: list[dict]) -> tuple[str, Optional[str]]:
+    """(model name to send, note). LLM_MODEL when the server lists it; else the first served model (llama.cpp ignores
+    the name anyway, vLLM would refuse LLM_MODEL); no list → LLM_MODEL as it is."""
     ids = [m["id"] for m in entries]
-    if config.LLM_MODEL in ids:
+    if not ids or config.LLM_MODEL in ids:
         return config.LLM_MODEL, None
-    if not ids or any(str(m.get("owned_by", "")).lower() == "llamacpp" for m in entries):
-        return (ids[0] if ids else None), None
-    return None, f"LLM_MODEL {config.LLM_MODEL!r} is not served (available: {', '.join(ids)[:150]})"
+    if backend_of(entries) == "llamacpp":
+        return ids[0], None
+    return ids[0], f"LLM_MODEL {config.LLM_MODEL!r} is not served; using {ids[0]!r} (available: {', '.join(ids)[:150]})"
 
 
 def probe() -> bool:
@@ -43,17 +78,16 @@ def probe() -> bool:
         with urllib.request.urlopen(req, timeout=config.LLM_STATUS_TIMEOUT) as response:
             ok = response.status == 200
             try:
-                models = json.loads(response.read().decode("utf-8")).get("data") or []
+                entries = model_entries(json.loads(response.read().decode("utf-8")))
             except Exception:
-                models = []
-            served, error = check_models(models)
-            if error:
-                ok = False
-                if _state.get("error") != error:      # once per change, not every probe
-                    log.warning("LLM offline: %s", error)
-            elif ok and served:
-                with _lock:
-                    _state["served_model"] = served
+                entries = []
+        if ok:
+            model, note = resolve_model(entries)
+            if note and note != _state.get("note"):     # once per change, not every probe
+                log.warning("LLM: %s", note)
+            with _lock:
+                _state.update(request_model=model, note=note, backend=backend_of(entries),
+                              served_model=model if entries else _state.get("served_model"))
     except Exception as exc:  # network / HTTP errors all mean "not connected"
         ok = False
         error = str(exc)[:200]
@@ -73,16 +107,52 @@ def status(max_age: float = config.LLM_STATUS_CACHE_SEC) -> dict:
     with _lock:
         return {"connected": _state["connected"], "model": _state.get("served_model") or config.LLM_MODEL,
                 "status": "ok" if _state["connected"] else "error",
-                "checked_at": _state["checked_at"], "last_ok_at": _state["last_ok_at"]}
+                "checked_at": _state["checked_at"], "last_ok_at": _state["last_ok_at"],
+                "backend": _state.get("backend"), "note": _state.get("note")}
 
 
-def _request(payload: dict, stream: bool = False, timeout: Optional[int] = None):
-    body = {"model": config.LLM_MODEL,
-            "chat_template_kwargs": {"enable_thinking": config.LLM_ENABLE_THINKING},
-            "stream": stream, **payload}
+def _model() -> str:
+    with _lock:
+        return _state.get("request_model") or config.LLM_MODEL
+
+
+def _open(body: dict, timeout: Optional[int]):
     req = urllib.request.Request(f"{config.LLM_API_BASE}/chat/completions",
                                  data=json.dumps(body).encode("utf-8"), headers=_headers())
     return urllib.request.urlopen(req, timeout=timeout or config.LLM_CHAT_TIMEOUT)
+
+
+def _model_refused(exc: urllib.error.HTTPError) -> bool:
+    """vLLM: 404 {"error": {"type": "NotFoundError", "param": "model", "message": "The model `X` does not exist."}}."""
+    if exc.code not in (400, 404):
+        return False
+    try:
+        text = exc.read().decode("utf-8", errors="replace")[:500]
+    except Exception:
+        text = ""
+    exc.msg = f"{exc.msg}: {text}" if text else exc.msg      # keep the server's reason in the logged error
+    low = text.lower()
+    return "model" in low and ("does not exist" in low or "not found" in low or '"param": "model"' in low
+                               or '"param":"model"' in low)
+
+
+def _request(payload: dict, stream: bool = False, timeout: Optional[int] = None):
+    if not _state["checked_at"]:
+        probe()                                    # first call in this worker: learn the served model first
+    body = {"model": _model(),
+            "chat_template_kwargs": {"enable_thinking": config.LLM_ENABLE_THINKING},
+            "stream": stream, **payload}
+    try:
+        return _open(body, timeout)
+    except urllib.error.HTTPError as exc:
+        if not _model_refused(exc):
+            raise
+        tried = body["model"]
+        probe()
+        if _model() == tried:
+            raise
+        log.warning("LLM refused model %r; retrying with %r", tried, _model())
+        return _open({**body, "model": _model()}, timeout)
 
 
 def _log(purpose: str, ok: bool, t0: float) -> None:
@@ -108,6 +178,12 @@ def _failed(exc):
         _state["error"] = str(exc)[:200]
 
 
+def _content(data: dict) -> str:
+    """The answer text of a completion: "" for a null content, a leading <think>…</think> block removed."""
+    message = ((data.get("choices") or [{}])[0] or {}).get("message") or {}
+    return _THINK.sub("", message.get("content") or "", count=1)
+
+
 def chat(messages: list[dict], timeout: int = config.LLM_SUMMARY_TIMEOUT, max_tokens: Optional[int] = None,
          purpose: str = "chat", **options) -> str:
     """One chat completion; returns the assistant text. Raises on transport/HTTP errors.
@@ -127,8 +203,8 @@ def chat(messages: list[dict], timeout: int = config.LLM_SUMMARY_TIMEOUT, max_to
     _log(purpose, True, t0)
     if data.get("model"):
         with _lock:
-            _state["served_model"] = data["model"]      # what the server actually ran (it ignores the requested name)
-    return data["choices"][0]["message"]["content"]
+            _state["served_model"] = data["model"]      # what the server actually ran (llama.cpp ignores the name)
+    return _content(data)
 
 
 def model_name() -> str:
@@ -137,15 +213,21 @@ def model_name() -> str:
         return _state.get("served_model") or config.LLM_MODEL
 
 
+def parse_json(content: str):
+    """json.loads, tolerating a ```json fence around the object (a server that ignores response_format)."""
+    m = _FENCE.match(content or "")
+    return json.loads(m.group(1) if m else content)
+
+
 def complete_json(messages: list[dict], schema: dict, name: str = "result", timeout: Optional[int] = None, **params) -> dict:
-    """Structured output via response_format json_schema → parsed dict."""
+    """Structured output via response_format json_schema → parsed dict (vLLM and llama.cpp both enforce the schema)."""
     content = chat(messages, timeout=timeout or config.LLM_CHAT_TIMEOUT, purpose=name,
                    response_format={"type": "json_schema", "json_schema": {"name": name, "schema": schema}}, **params)
-    return json.loads(content)
+    return parse_json(content)
 
 
 def stream_text(messages: list[dict], timeout: Optional[int] = None, purpose: str = "stream", **params):
-    """Yield content deltas from an SSE stream."""
+    """Yield content deltas from an SSE stream (reasoning deltas, sent apart by vLLM, are skipped)."""
     t0 = time.perf_counter()
     try:
         with _request({"messages": messages, **params}, stream=True, timeout=timeout) as resp:

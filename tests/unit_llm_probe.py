@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Unit tests for the LLM status probe (services/llm.py: check_models, probe, status) against a fake /models server
-on 127.0.0.1 — no database, no real LLM. Needs only the standard library:
+"""Unit tests for services/llm.py against a fake OpenAI-compatible server on 127.0.0.1 that behaves like vLLM or like
+llama.cpp — no database, no real LLM. Needs only the standard library:
 
     python3 tests/unit_llm_probe.py
 
-Regression (2026-11-23): the LLM host moved from llama.cpp to vLLM. vLLM answers 404 to a model name it does not serve;
-the old name stayed in LLM_MODEL, every AI feature failed, and the probe still said "connected" because it only looked
-at the HTTP status of /models.
+Regression (2026-11-23): the LLM host moved from llama.cpp to vLLM. vLLM answers 404 to a model name it does not
+serve; the old name stayed in LLM_MODEL, every AI feature failed, and the probe still said "connected". The client
+must now work with either server whatever LLM_MODEL says: send LLM_MODEL when it is served, else the served model.
 """
 import json
 import os
@@ -20,7 +20,9 @@ import config  # noqa: E402
 from services import llm  # noqa: E402
 
 results = []
-REPLY = {"status": 200, "body": {}}
+# kind: vllm | llamacpp | llamacpp_new (models under "data" and "models"); ids served; models_status; content
+SRV = {"kind": "vllm", "ids": ["Qwen3.8-27B-FP8", "Qwen3.8-27B-UD-Q6_K_L"], "models_status": 200,
+       "content": "hello", "seen": []}
 
 
 def check(name, cond, detail=""):
@@ -29,12 +31,37 @@ def check(name, cond, detail=""):
 
 
 class Fake(BaseHTTPRequestHandler):
-    def do_GET(self):  # noqa: N802
-        body = json.dumps(REPLY["body"]).encode()
-        self.send_response(REPLY["status"])
-        self.send_header("Content-Type", "application/json")
+    def _send(self, code, obj=None, raw=None, ctype="application/json"):
+        body = raw if raw is not None else json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_GET(self):  # noqa: N802
+        if SRV["models_status"] != 200:
+            return self._send(SRV["models_status"], {"error": "boom"})
+        owner = "vllm" if SRV["kind"] == "vllm" else "llamacpp"
+        data = [{"id": i, "object": "model", "owned_by": owner} for i in SRV["ids"]]
+        out = {"object": "list", "data": data}
+        if SRV["kind"] == "llamacpp_new":
+            out["models"] = [{"name": i, "model": i} for i in SRV["ids"]]
+        self._send(200, out)
+
+    def do_POST(self):  # noqa: N802
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        SRV["seen"].append(body["model"])
+        if SRV["kind"] == "vllm" and body["model"] not in SRV["ids"]:
+            return self._send(404, {"error": {"message": f"The model `{body['model']}` does not exist.",
+                                              "type": "NotFoundError", "param": "model", "code": 404}})
+        ran = body["model"] if SRV["kind"] == "vllm" else SRV["ids"][0]
+        if body.get("stream"):
+            chunks = [{"choices": [{"delta": {"reasoning": "hmm"}}]}] + \
+                     [{"choices": [{"delta": {"content": p}}]} for p in ("hel", "lo")]
+            raw = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n"
+            return self._send(200, raw=raw.encode(), ctype="text/event-stream")
+        self._send(200, {"model": ran, "choices": [{"message": {"role": "assistant", "content": SRV["content"]}}]})
 
     def log_message(self, *a):
         pass
@@ -45,51 +72,87 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 config.LLM_API_BASE = f"http://127.0.0.1:{srv.server_port}/v1"
 
 
-def vllm(*ids):
-    return {"object": "list", "data": [{"id": i, "object": "model", "owned_by": "vllm"} for i in ids]}
+def reset(**kw):
+    SRV.update({"kind": "vllm", "ids": ["Qwen3.8-27B-FP8", "Qwen3.8-27B-UD-Q6_K_L"], "models_status": 200,
+                "content": "hello", "seen": []}, **kw)
+    llm._state.update(connected=False, checked_at=0.0, error=None, request_model=None, served_model=None,
+                      backend=None, note=None)
 
 
-def run(status, body):
-    REPLY.update(status=status, body=body)
-    ok = llm.probe()
-    return ok, llm.status(max_age=1e9), dict(llm._state)
+def ask():
+    return llm.chat([{"role": "user", "content": "hi"}], timeout=5, purpose="unit")
 
 
-# check_models (pure)
-check("listed model → that model, no error", llm.check_models(vllm("A", "Qwen3.8-27B-FP8")["data"]) == ("Qwen3.8-27B-FP8", None))
-m, err = llm.check_models(vllm("Qwen3.8-27B-FP8-other", "X")["data"])
-check("vLLM without the model → error naming it and the available ids", m is None and err and "Qwen3.8-27B-FP8" in err and "X" in err, err)
-check("llama.cpp loaded file → accepted (it ignores the name)",
-      llm.check_models([{"id": "/models/qwen.gguf", "owned_by": "llamacpp"}]) == ("/models/qwen.gguf", None))
-check("empty list → no error (nothing to compare)", llm.check_models([]) == (None, None))
-check("junk entries ignored", llm.check_models([None, "x", {"owned_by": "vllm"}]) == (None, None))
-
-# probe / status
-ok, st, s = run(200, vllm("Qwen3.8-27B-FP8", "Qwen3.8-27B-UD-Q6_K_L"))
-check("vLLM serving LLM_MODEL → connected", ok and st["connected"] and st["status"] == "ok" and st["model"] == "Qwen3.8-27B-FP8", st)
-check("… error cleared", s["error"] is None and s["last_ok_at"])
-
-config.LLM_MODEL = "Qwen3.6-35B-A3B-Q6_K"   # the production setting before the fix
-ok, st, s = run(200, vllm("Qwen3.8-27B-FP8", "Qwen3.8-27B-UD-Q6_K_L"))
-check("vLLM NOT serving LLM_MODEL (the 2026-11-23 case) → not connected", not ok and not st["connected"] and st["status"] == "error", st)
-check("… error says which model is missing", s["error"] and "Qwen3.6-35B-A3B-Q6_K" in s["error"], s["error"])
-
-ok, st, s = run(200, {"data": [{"id": "/models/Qwen3.6-35B.gguf", "owned_by": "llamacpp"}]})
-check("llama.cpp with another name → connected (old behaviour kept)", ok and st["connected"], st)
-check("… reports the loaded model", st["model"] == "/models/Qwen3.6-35B.gguf", st)
+# --- pure helpers
+E = llm.model_entries
+check("entries: vLLM data", [m["id"] for m in E({"data": [{"id": "A"}, {"id": "B"}]})] == ["A", "B"])
+check("entries: llama.cpp new 'models' key, deduplicated",
+      [m["id"] for m in E({"data": [{"id": "a.gguf"}], "models": [{"name": "a.gguf"}, {"model": "b.gguf"}]})] == ["a.gguf", "b.gguf"])
+check("entries: junk ignored", E({"data": [None, "x", {"owned_by": "vllm"}]}) == [] and E(None) == [] and E([]) == [])
 config.LLM_MODEL = "Qwen3.8-27B-FP8"
+check("resolve: listed → LLM_MODEL, no note", llm.resolve_model(E({"data": [{"id": "X"}, {"id": "Qwen3.8-27B-FP8"}]})) == ("Qwen3.8-27B-FP8", None))
+m, note = llm.resolve_model([{"id": "X", "owned_by": "vllm"}])
+check("resolve: vLLM without it → served model + note naming both", m == "X" and "Qwen3.8-27B-FP8" in note and "'X'" in note, note)
+check("resolve: llama.cpp → its model, no note", llm.resolve_model([{"id": "q.gguf", "owned_by": "llamacpp"}]) == ("q.gguf", None))
+check("resolve: empty list → LLM_MODEL", llm.resolve_model([]) == ("Qwen3.8-27B-FP8", None))
+check("content: <think> block removed", llm._content({"choices": [{"message": {"content": "<think>x\ny</think>\n\nAnswer"}}]}) == "Answer")
+check("content: null → ''", llm._content({"choices": [{"message": {"content": None, "reasoning": "r"}}]}) == "")
+check("content: no choices → ''", llm._content({}) == "")
+check("json: fenced object parsed", llm.parse_json('```json\n{"a": 1}\n```') == {"a": 1})
+check("json: plain object parsed", llm.parse_json('\n\n{"a": 2}') == {"a": 2})
 
-ok, st, s = run(500, {"error": "boom"})
-check("HTTP 500 → not connected", not ok and not st["connected"])
-check("… error kept", bool(s["error"]))
+# --- vLLM
+reset(); config.LLM_MODEL = "Qwen3.8-27B-FP8"
+st = llm.status(0)
+check("vLLM, LLM_MODEL served → connected, sends LLM_MODEL", st["connected"] and st["model"] == "Qwen3.8-27B-FP8" and st["backend"] == "vllm" and not st["note"], st)
+check("… chat works", ask() == "hello" and SRV["seen"] == ["Qwen3.8-27B-FP8"], SRV["seen"])
 
-ok, st, s = run(200, vllm("Qwen3.8-27B-FP8"))
-check("recovers once the model is served again", ok and st["connected"] and s["error"] is None)
+reset(); config.LLM_MODEL = "Qwen3.6-35B-A3B-Q6_K"       # the production setting of 2026-11-23
+st = llm.status(0)
+check("vLLM, LLM_MODEL NOT served (the 2026-11-23 case) → still connected", st["connected"] and st["status"] == "ok", st)
+check("… uses the served model and says so", st["model"] == "Qwen3.8-27B-FP8" and "Qwen3.6-35B-A3B-Q6_K" in (st["note"] or ""), st)
+check("… chat works without a 404", ask() == "hello" and SRV["seen"] == ["Qwen3.8-27B-FP8"], SRV["seen"])
+check("… complete_json works", llm.complete_json([{"role": "user", "content": "j"}], {"type": "object"}, name="unit") == {"a": 1}
+      if SRV.update(content='{"a": 1}') is None else False)
+SRV["content"] = "hello"
+check("… stream works, reasoning deltas skipped", "".join(llm.stream_text([{"role": "user", "content": "s"}], timeout=5)) == "hello")
+
+reset(); config.LLM_MODEL = "Qwen3.6-35B-A3B-Q6_K"
+check("first chat in a worker (no probe yet) → probes first, no 404", ask() == "hello" and SRV["seen"] == ["Qwen3.8-27B-FP8"], SRV["seen"])
+
+reset(); config.LLM_MODEL = "Qwen3.8-27B-FP8"
+llm.status(0)
+SRV["ids"] = ["Qwen4-32B"]                                  # model swapped on the host after the probe
+check("model swapped while running → 404, re-probe, retried once, works", ask() == "hello" and SRV["seen"] == ["Qwen3.8-27B-FP8", "Qwen4-32B"], SRV["seen"])
+check("… status follows", llm.status(1e9)["model"] == "Qwen4-32B")
+
+reset(); config.LLM_MODEL = "Qwen3.8-27B-FP8"
+llm.status(0)
+SRV["ids"] = []                                             # nothing listed: the retry cannot help
+try:
+    ask(); raised = False
+except Exception as exc:
+    raised = "does not exist" in str(exc)
+check("refused and nothing better listed → error raised with the server's reason (no loop)", raised and len(SRV["seen"]) == 1, SRV["seen"])
+
+# --- llama.cpp
+for kind in ("llamacpp", "llamacpp_new"):
+    reset(kind=kind, ids=["/models/Qwen3.6-35B-A3B-Q6_K.gguf"]); config.LLM_MODEL = "anything"
+    st = llm.status(0)
+    check(f"{kind}: any LLM_MODEL → connected, no note", st["connected"] and st["backend"] == "llamacpp" and not st["note"], st)
+    check(f"{kind}: chat works, reports the loaded model", ask() == "hello" and llm.model_name() == "/models/Qwen3.6-35B-A3B-Q6_K.gguf")
+reset(kind="llamacpp", ids=["q.gguf"], content="<think>plan</think>\n{\"a\": 3}"); config.LLM_MODEL = "q.gguf"
+check("llama.cpp: <think> in content + JSON → parsed", llm.complete_json([{"role": "user", "content": "j"}], {"type": "object"}) == {"a": 3})
+
+# --- failures
+reset(models_status=500); config.LLM_MODEL = "Qwen3.8-27B-FP8"
+st = llm.status(0)
+check("/models HTTP 500 → not connected, error kept", not st["connected"] and st["status"] == "error" and llm._state["error"])
+SRV["models_status"] = 200
+check("… recovers", llm.status(0)["connected"] and llm._state["error"] is None)
 
 srv.shutdown(); srv.server_close()
-config.LLM_API_BASE = f"http://127.0.0.1:{srv.server_port}/v1"
-ok, st, s = run(200, {})
-check("server down → not connected", not ok and not st["connected"] and s["error"])
+check("server down → not connected", not llm.probe() and not llm.status(1e9)["connected"] and llm._state["error"])
 
 print(f"\n{sum(results)}/{len(results)} passed")
 sys.exit(0 if all(results) else 1)
